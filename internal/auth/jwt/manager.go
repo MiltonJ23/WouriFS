@@ -31,6 +31,11 @@ func NewRSATokenManager(privateKey *rsa.PrivateKey, publicKey *rsa.PublicKey) *R
 }
 
 func (m *RSATokenManager) GenerateToken(ctx context.Context, user *domain.User, duration time.Duration) (string, error) {
+
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+
 	now := time.Now()
 	claims := CustomClaims{
 		Username:  user.Username,
@@ -48,6 +53,10 @@ func (m *RSATokenManager) GenerateToken(ctx context.Context, user *domain.User, 
 }
 
 func (m *RSATokenManager) VerifyToken(ctx context.Context, tokenStr string) (*domain.TokenPayload, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	token, parseTokenWithClaimsErr := jwt.ParseWithClaims(tokenStr, &CustomClaims{}, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
 			return nil, errors.New("security violation: invalid signing method")
