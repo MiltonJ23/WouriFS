@@ -30,9 +30,10 @@ func (i *InMemoryDataNodeRegistry) Register(node *DataNodeStatus) error {
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
-	node.LastHeartbeat = time.Now()
-	node.IsAvailable = true
-	i.nodes[node.ID] = node
+	nodeCopy := *node
+	nodeCopy.LastHeartbeat = time.Now()
+	nodeCopy.IsAvailable = true
+	i.nodes[nodeCopy.ID] = &nodeCopy
 
 	return nil
 }
@@ -68,8 +69,8 @@ func (i *InMemoryDataNodeRegistry) MarkUnavailable(id string) error {
 }
 
 func (i *InMemoryDataNodeRegistry) GetAllAvailable() []*DataNodeStatus {
-	i.mu.Lock()
-	defer i.mu.Unlock()
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 
 	var availableNodes []*DataNodeStatus
 
@@ -84,8 +85,8 @@ func (i *InMemoryDataNodeRegistry) GetAllAvailable() []*DataNodeStatus {
 }
 
 func (i *InMemoryDataNodeRegistry) GetAll() []*DataNodeStatus {
-	i.mu.Lock()
-	defer i.mu.Unlock()
+	i.mu.RLock()
+	defer i.mu.RUnlock()
 
 	var allNodes []*DataNodeStatus
 	for _, node := range i.nodes {
