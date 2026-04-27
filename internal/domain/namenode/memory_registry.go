@@ -74,7 +74,7 @@ func (i *InMemoryDataNodeRegistry) GetAllAvailable() []*DataNodeStatus {
 	var availableNodes []*DataNodeStatus
 
 	for _, node := range i.nodes {
-		if !node.IsAvailable {
+		if node.IsAvailable {
 			nodeCopy := *node
 			availableNodes = append(availableNodes, &nodeCopy)
 		}
