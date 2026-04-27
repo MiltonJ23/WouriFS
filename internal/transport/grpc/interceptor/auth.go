@@ -86,7 +86,7 @@ func (i *AuthInterceptor) authorize(ctx context.Context) (context.Context, error
 func PayloadFromContext(ctx context.Context) (*domain.TokenPayload, error) {
 	payload, ok := ctx.Value(PayloadContextKey).(*domain.TokenPayload)
 	if !ok {
-		return nil, status.Errorf(codes.Unauthenticated, "security violation: payload not found in context or corrupted")
+		return nil, status.Errorf(codes.Internal, "security violation: payload not found in context or corrupted")
 	}
 	return payload, nil
 }
