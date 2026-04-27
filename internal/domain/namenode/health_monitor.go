@@ -107,9 +107,6 @@ func (h *HealthMonitor) Stop() {
 // run is the main ticker loop. A deferred cleanup always resets isRunning so that
 // Start can be called again after the parent context is cancelled externally.
 func (h *HealthMonitor) run(ctx context.Context) {
-	// Reset isRunning when the goroutine exits regardless of how termination occurs
-	// (external context cancellation or an explicit Stop call). This ensures that
-	// Start can be called again after the parent context is cancelled.
 	defer func() {
 		h.mu.Lock()
 		h.isRunning = false
@@ -148,7 +145,10 @@ func (h *HealthMonitor) sweep() error {
 	}
 
 	combined := errors.Join(errs...)
-	if combined != nil && h.onError != nil {
+	if len(errs) == 0 {
+		return nil
+	}
+	if h.onError != nil {
 		h.onError(combined)
 	}
 	return combined

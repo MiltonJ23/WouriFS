@@ -125,8 +125,8 @@ func TestHealthMonitor_BDD(t *testing.T) {
 
 	t.Run("Given the monitor sweep encounters an unexpected registry error", func(t *testing.T) {
 		// Arrange: a registry whose MarkUnavailable always returns an unexpected error.
-		unexpectedErr := errors.New("storage backend unavailable")
-		errReg := &errMarkRegistry{err: unexpectedErr}
+		backendErr := errors.New("storage backend unavailable")
+		errReg := &errMarkRegistry{err: backendErr}
 		baseTime := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 		mockClock := &MockClock{currentTime: baseTime.Add(20 * time.Second)}
 
@@ -149,8 +149,8 @@ func TestHealthMonitor_BDD(t *testing.T) {
 			if captured == nil {
 				t.Fatal("Expected error handler to be called, but it was not")
 			}
-			if !errors.Is(captured, unexpectedErr) {
-				t.Errorf("Expected %v, got %v", unexpectedErr, captured)
+			if !errors.Is(captured, backendErr) {
+				t.Errorf("Expected %v, got %v", backendErr, captured)
 			}
 		})
 	})
