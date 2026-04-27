@@ -2,6 +2,7 @@ package interceptor
 
 import (
 	"context"
+	"log"
 	"strings"
 
 	"github.com/MiltonJ23/WouriFS/internal/domain"
@@ -11,11 +12,12 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// contextKey is a private key that will ensure that our context doesn't get override or erased or accessed by Context spoofing of another package by error thus compromising our creds
+// contextKey is unexported so only this package can define keys of this type,
+// preventing cross-package context key collisions and spoofing.
 type contextKey string
 
-// PayloadContextKey is the key used to store the secure identity in the gRPC request.
-const PayloadContextKey contextKey = "wourifs-auth-payload"
+// payloadContextKey is the key used to store the validated identity in the gRPC request context.
+const payloadContextKey contextKey = "wourifs-auth-payload"
 
 type AuthInterceptor struct {
 	token domain.TokenManager
@@ -77,14 +79,15 @@ func (i *AuthInterceptor) authorize(ctx context.Context) (context.Context, error
 
 	payload, payloadValidationErr := i.token.VerifyToken(ctx, tokenStr)
 	if payloadValidationErr != nil {
-		return nil, status.Errorf(codes.Unauthenticated, "security violation: invalid authorization token: %v", payloadValidationErr)
+		log.Printf("auth interceptor: token verification failed: %v", payloadValidationErr)
+		return nil, status.Errorf(codes.Unauthenticated, "security violation: invalid authorization token")
 	}
 	// now we inject the context into the payload to ensure namespace isolation
-	return context.WithValue(ctx, PayloadContextKey, payload), nil
+	return context.WithValue(ctx, payloadContextKey, payload), nil
 }
 
 func PayloadFromContext(ctx context.Context) (*domain.TokenPayload, error) {
-	payload, ok := ctx.Value(PayloadContextKey).(*domain.TokenPayload)
+	payload, ok := ctx.Value(payloadContextKey).(*domain.TokenPayload)
 	if !ok {
 		return nil, status.Errorf(codes.Internal, "security violation: payload not found in context or corrupted")
 	}

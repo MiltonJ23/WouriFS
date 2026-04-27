@@ -5,6 +5,8 @@ import (
 	"errors"
 	"net"
 
+	"github.com/MiltonJ23/WouriFS/internal/domain"
+	"github.com/MiltonJ23/WouriFS/internal/transport/grpc/interceptor"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -14,7 +16,7 @@ type SecureServer struct {
 	address    string
 }
 
-func NewSecureServer(address string, tlsConfig *tls.Config) (*SecureServer, error) {
+func NewSecureServer(address string, tlsConfig *tls.Config, tm domain.TokenManager) (*SecureServer, error) {
 	if address == "" {
 		return nil, errors.New("server address cannot be empty")
 	}
@@ -23,12 +25,19 @@ func NewSecureServer(address string, tlsConfig *tls.Config) (*SecureServer, erro
 		return nil, errors.New("security violation: Tls Configuration is required")
 	}
 
+	if tm == nil {
+		return nil, errors.New("security violation: TokenManager is required")
+	}
+
 	// let's convert the tls configuration into grpc credentials
 	creds := credentials.NewTLS(tlsConfig)
 
-	// TODO : later we will add our JWT interceptors here
+	authInterceptor := interceptor.NewAuthInterceptor(tm)
+
 	opts := []grpc.ServerOption{
 		grpc.Creds(creds),
+		grpc.UnaryInterceptor(authInterceptor.Unary()),
+		grpc.StreamInterceptor(authInterceptor.Stream()),
 	}
 
 	server := grpc.NewServer(opts...)
