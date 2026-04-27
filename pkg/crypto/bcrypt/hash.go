@@ -18,7 +18,7 @@ func NewBcryptHashser(cost int) (*BcryptHashser, error) {
 	if cost < MinWorkFactor {
 		return nil, errors.New("security violation: Bcrypt hash cost must be >= " + strconv.Itoa(MinWorkFactor))
 	}
-	return &BcryptHashser{cost: cost}, nil
+	return &BcryptHashser{cost: MinWorkFactor}, nil
 }
 
 func (h *BcryptHashser) HashPassword(password string) (string, error) {
