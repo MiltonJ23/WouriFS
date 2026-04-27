@@ -18,5 +18,5 @@ type DataNodeRegistry interface {
 	UpdateHeartbeat(id string, freeStorage int64, activeConnections int32) error
 	MarkUnavailable(id string) error
 	GetAllAvailable() []*DataNodeStatus
-	GelAll() []*DataNodeStatus
+	GetAll() []*DataNodeStatus
 }
