@@ -41,14 +41,14 @@ func (m *RSATokenManager) GenerateToken(ctx context.Context, user *domain.User, 
 		Username:  user.Username,
 		Namespace: user.Namespace,
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   user.Username,
-			ExpiresAt: jwt.NewNumericDate(now),
-			IssuedAt:  jwt.NewNumericDate(now.Add(duration)),
+			Subject:   user.ID,
+			ExpiresAt: jwt.NewNumericDate(now.Add(duration)),
+			IssuedAt:  jwt.NewNumericDate(now),
 			Issuer:    "wourifs-auth",
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
+	token := jwt.NewWithClaims(jwt.SigningMethodRS256, &claims)
 	return token.SignedString(m.PrivateKey)
 }
 
