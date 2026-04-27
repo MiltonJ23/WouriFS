@@ -91,8 +91,6 @@ func (x *RegisterDataNodeRequest) GetFreeStorageBytes() int64 {
 
 type RegisterDataNodeResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
-	ErrorMessage  string                 `protobuf:"bytes,2,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"` // Displayed only if `success` is `false`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -125,20 +123,6 @@ func (x *RegisterDataNodeResponse) ProtoReflect() protoreflect.Message {
 // Deprecated: Use RegisterDataNodeResponse.ProtoReflect.Descriptor instead.
 func (*RegisterDataNodeResponse) Descriptor() ([]byte, []int) {
 	return file_namenode_proto_rawDescGZIP(), []int{1}
-}
-
-func (x *RegisterDataNodeResponse) GetSuccess() bool {
-	if x != nil {
-		return x.Success
-	}
-	return false
-}
-
-func (x *RegisterDataNodeResponse) GetErrorMessage() string {
-	if x != nil {
-		return x.ErrorMessage
-	}
-	return ""
 }
 
 type HeartbeatRequest struct {
@@ -203,7 +187,7 @@ func (x *HeartbeatRequest) GetActiveConnections() int32 {
 
 type HeartbeatResponse struct {
 	state        protoimpl.MessageState `protogen:"open.v1"`
-	Acknowledged bool                   `protobuf:"varint,1,opt,name=acknowledged,proto3" json:"acknowledged,omitempty"` // true if the namenode tryly processed the Heartbeat
+	Acknowledged bool                   `protobuf:"varint,1,opt,name=acknowledged,proto3" json:"acknowledged,omitempty"` // true if the namenode truly processed the Heartbeat
 	// Design Pattern "Amnesia Recovery" : If the Namenode restarts, it loses its RAM registry. It can use this flag to instruct an unknown Datanode to send a RegisterDataNodeRequest.
 	RequireReregistration bool `protobuf:"varint,2,opt,name=require_reregistration,json=requireReregistration,proto3" json:"require_reregistration,omitempty"`
 	unknownFields         protoimpl.UnknownFields
@@ -264,10 +248,8 @@ const file_namenode_proto_rawDesc = "" +
 	"datanodeId\x12\x18\n" +
 	"\aaddress\x18\x02 \x01(\tR\aaddress\x12.\n" +
 	"\x13total_storage_bytes\x18\x03 \x01(\x03R\x11totalStorageBytes\x12,\n" +
-	"\x12free_storage_bytes\x18\x04 \x01(\x03R\x10freeStorageBytes\"Y\n" +
-	"\x18RegisterDataNodeResponse\x12\x18\n" +
-	"\asuccess\x18\x01 \x01(\bR\asuccess\x12#\n" +
-	"\rerror_message\x18\x02 \x01(\tR\ferrorMessage\"\x90\x01\n" +
+	"\x12free_storage_bytes\x18\x04 \x01(\x03R\x10freeStorageBytes\"\x1a\n" +
+	"\x18RegisterDataNodeResponse\"\x90\x01\n" +
 	"\x10HeartbeatRequest\x12\x1f\n" +
 	"\vdatanode_id\x18\x01 \x01(\tR\n" +
 	"datanodeId\x12,\n" +
@@ -278,7 +260,7 @@ const file_namenode_proto_rawDesc = "" +
 	"\x16require_reregistration\x18\x02 \x01(\bR\x15requireReregistration2\xde\x01\n" +
 	"\x0fNameNodeService\x12o\n" +
 	"\x10RegisterDataNode\x12,.wourifs.namenode.v1.RegisterDataNodeRequest\x1a-.wourifs.namenode.v1.RegisterDataNodeResponse\x12Z\n" +
-	"\tHeartbeat\x12%.wourifs.namenode.v1.HeartbeatRequest\x1a&.wourifs.namenode.v1.HeartbeatResponseB<Z:github.com/MiltonJ23/WouriFS/internal/transport/grpc/pb;pbb\x06proto3"
+	"\tHeartbeat\x12%.wourifs.namenode.v1.HeartbeatRequest\x1a&.wourifs.namenode.v1.HeartbeatResponseB5Z3github.com/MiltonJ23/WouriFS/api/gen/v1/namenode;pbb\x06proto3"
 
 var (
 	file_namenode_proto_rawDescOnce sync.Once

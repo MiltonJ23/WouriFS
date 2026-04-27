@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package wourifs.namenode.v1;
 
-option go_package = "github.com/MiltonJ23/WouriFS/internal/transport/grpc/pb;pb";
+option go_package = "github.com/MiltonJ23/WouriFS/api/gen/v1/namenode;pb";
 
 service NameNodeService {
   // DataNode registering at launch (FR-D-007)
@@ -19,10 +19,7 @@ message RegisterDataNodeRequest {
   int64 free_storage_bytes = 4;    // Storage space that is free
 }
 
-message RegisterDataNodeResponse {
-  bool success = 1;
-  string error_message = 2;        // Displayed only if `success` is `false`
-}
+message RegisterDataNodeResponse {}
 
 message HeartbeatRequest {
   string datanode_id = 1;
@@ -31,7 +28,7 @@ message HeartbeatRequest {
 }
 
 message HeartbeatResponse {
-  bool acknowledged = 1;           // true if the namenode tryly processed the Heartbeat
-  //Design Pattern "Amnesia Recovery" : If the Namenode restarts, it loses its RAM registry. It can use this flag to instruct an unknown Datanode to send a RegisterDataNodeRequest.
+  bool acknowledged = 1;           // true if the namenode truly processed the Heartbeat
+  // Design Pattern "Amnesia Recovery" : If the Namenode restarts, it loses its RAM registry. It can use this flag to instruct an unknown Datanode to send a RegisterDataNodeRequest.
   bool require_reregistration = 2;
 }
