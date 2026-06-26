@@ -1,14 +1,21 @@
-.PHONY: build test cover bench proto clean lint
+.PHONY: build test cover bench proto clean lint all provision share fuse
 
 GO ?= go
 PROTOC ?= protoc
 MODULE = github.com/MiltonJ23/WouriFS
 
-# Build all binaries
-build:
+# Build all binaries (Sprint 1 + Sprint 2)
+build: build-s1 build-s2
+
+build-s1:
 	$(GO) build -o bin/namenode ./cmd/namenode
 	$(GO) build -o bin/datanode ./cmd/datanode
 	$(GO) build -o bin/bench ./cmd/bench
+
+build-s2:
+	$(GO) build -o bin/wouri-provision ./cmd/provision
+	$(GO) build -o bin/share-service ./cmd/share-service
+	$(GO) build -o bin/wouri-fuse ./cmd/fuse
 
 # Run all tests
 test:
@@ -37,6 +44,19 @@ proto:
 	$(PROTOC) --go_out=. --go_opt=module=$(MODULE) \
 		--go-grpc_out=. --go-grpc_opt=module=$(MODULE) \
 		api/proto/v1/datanode.proto
+	$(PROTOC) --go_out=. --go_opt=module=$(MODULE) \
+		--go-grpc_out=. --go-grpc_opt=module=$(MODULE) \
+		api/proto/v1/provision.proto
+
+# Sprint 2 CLI shortcuts
+provision: build-s2
+	./bin/wouri-provision
+
+share: build-s2
+	./bin/share-service --institutions configs/institutions.example.json
+
+fuse: build-s2
+	./bin/wouri-fuse --namenode 127.0.0.1:9000
 
 # Clean build artifacts
 clean:
@@ -46,5 +66,5 @@ clean:
 lint:
 	golangci-lint run ./...
 
-# Run everything: lint + test + build
+# Run everything: test + build
 all: test build
