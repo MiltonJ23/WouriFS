@@ -47,11 +47,22 @@ func (f *RaftFSM) Apply(logEntry *raft.Log) interface{} {
 
 	switch e.Op {
 	case "create_file":
-		f.store.PutFile(&FileMeta{FileID: e.FileID, Path: e.Path})
+		f.store.PutFile(&FileMeta{FileID: e.FileID, Path: e.Path, Mode: 0644})
 	case "delete_file":
 		f.store.DeleteFile(e.Path)
 	case "add_chunk":
 		f.store.AddChunk(e.FileID, e.ChunkID, e.Replicas)
+	case "mkdir":
+		f.store.MakeDir(e.Path)
+	case "rmdir":
+		f.store.RemoveDir(e.Path)
+	case "rename":
+		f.store.Rename(e.OldPath, e.NewPath)
+	case "truncate_file":
+		if fm, err := f.store.GetFile(e.Path); err == nil {
+			fm.Size = e.Size
+			fm.Mtime = time.Now()
+		}
 	}
 	return nil
 }

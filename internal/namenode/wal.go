@@ -4,16 +4,19 @@ import (
 	"encoding/json"
 	"os"
 	"sync"
+	"time"
 )
 
 // WALEntry represents one logged metadata mutation (FR-N-002).
 type WALEntry struct {
-	Op       string    `json:"op"`   // "create_file", "delete_file", "add_chunk"
-	Path     string    `json:"path"`
-	FileID   string    `json:"file_id,omitempty"`
-	ChunkID  string    `json:"chunk_id,omitempty"`
-	Replicas []string  `json:"replicas,omitempty"`
-	Size     int64     `json:"size,omitempty"`
+	Op       string   `json:"op"` // "create_file", "delete_file", "add_chunk", "mkdir", "rmdir", "rename", "truncate_file"
+	Path     string   `json:"path"`
+	OldPath  string   `json:"old_path,omitempty"` // for rename
+	NewPath  string   `json:"new_path,omitempty"` // for rename
+	FileID   string   `json:"file_id,omitempty"`
+	ChunkID  string   `json:"chunk_id,omitempty"`
+	Replicas []string `json:"replicas,omitempty"`
+	Size     int64    `json:"size,omitempty"`
 }
 
 // WAL is a simple append-only JSON-lines Write-Ahead Log (FR-N-002, FR-N-003).
@@ -72,11 +75,22 @@ func Replay(path string, store *MetadataStore) error {
 	for _, e := range entries {
 		switch e.Op {
 		case "create_file":
-			store.PutFile(&FileMeta{FileID: e.FileID, Path: e.Path})
+			store.PutFile(&FileMeta{FileID: e.FileID, Path: e.Path, Mode: 0644})
 		case "delete_file":
 			store.DeleteFile(e.Path)
 		case "add_chunk":
 			store.AddChunk(e.FileID, e.ChunkID, e.Replicas)
+		case "mkdir":
+			store.MakeDir(e.Path)
+		case "rmdir":
+			store.RemoveDir(e.Path)
+		case "rename":
+			store.Rename(e.OldPath, e.NewPath)
+		case "truncate_file":
+			if fm, err := store.GetFile(e.Path); err == nil {
+				fm.Size = e.Size
+				fm.Mtime = time.Now()
+			}
 		}
 	}
 	return nil

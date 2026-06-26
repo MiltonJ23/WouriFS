@@ -17,7 +17,7 @@ func TestMetadataStore_BDD(t *testing.T) {
 		store := newTestStore()
 
 		t.Run("When creating a new file", func(t *testing.T) {
-			fm, err := store.CreateFile("/wourifs/test/ledger.csv")
+			fm, err := store.CreateFile("/wourifs/test/ledger.csv", 0644)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -30,8 +30,8 @@ func TestMetadataStore_BDD(t *testing.T) {
 		})
 
 		t.Run("When creating a duplicate file path", func(t *testing.T) {
-			store.CreateFile("/wourifs/test/dup.csv")
-			_, err := store.CreateFile("/wourifs/test/dup.csv")
+			store.CreateFile("/wourifs/test/dup.csv", 0644)
+			_, err := store.CreateFile("/wourifs/test/dup.csv", 0644)
 			if err != ErrFileExists {
 				t.Errorf("expected ErrFileExists, got %v", err)
 			}
@@ -47,7 +47,7 @@ func TestMetadataStore_BDD(t *testing.T) {
 
 	t.Run("Given a file in the store", func(t *testing.T) {
 		store := newTestStore()
-		store.CreateFile("/wourifs/test/data.csv")
+		store.CreateFile("/wourifs/test/data.csv", 0644)
 
 		t.Run("When looking it up by path", func(t *testing.T) {
 			fm, err := store.GetFile("/wourifs/test/data.csv")
@@ -79,7 +79,7 @@ func TestMetadataStore_BDD(t *testing.T) {
 
 	t.Run("Given chunk allocation on a file", func(t *testing.T) {
 		store := newTestStore()
-		fm, _ := store.CreateFile("/wourifs/test/big.csv")
+		fm, _ := store.CreateFile("/wourifs/test/big.csv", 0644)
 
 		t.Run("When adding a chunk with replicas", func(t *testing.T) {
 			replicas := []string{"dn1:9001", "dn2:9001", "dn3:9001"}
@@ -141,9 +141,9 @@ func TestMetadataStore_BDD(t *testing.T) {
 
 	t.Run("Given directory listing", func(t *testing.T) {
 		store := newTestStore()
-		store.CreateFile("/wourifs/test/a/one.csv")
-		store.CreateFile("/wourifs/test/a/two.csv")
-		store.CreateFile("/wourifs/test/b/three.csv")
+		store.CreateFile("/wourifs/test/a/one.csv", 0644)
+		store.CreateFile("/wourifs/test/a/two.csv", 0644)
+		store.CreateFile("/wourifs/test/b/three.csv", 0644)
 
 		t.Run("When listing a directory with files", func(t *testing.T) {
 			entries := store.ListDirectory("/wourifs/test")
@@ -162,7 +162,7 @@ func TestMetadataStore_BDD(t *testing.T) {
 
 	t.Run("Given snapshot and restore", func(t *testing.T) {
 		store := newTestStore()
-		store.CreateFile("/wourifs/test/snap.csv")
+		store.CreateFile("/wourifs/test/snap.csv", 0644)
 
 		snap := store.Snapshot()
 

@@ -36,7 +36,7 @@ func startTestNamenode(t *testing.T, store *MetadataStore, reg *domainnn.InMemor
 	}
 
 	srv := grpc.NewServer()
-	nnSrv := NewNameNodeServer(store, reg, w)
+	nnSrv := NewNameNodeServer(store, reg, w, nil)
 	pb.RegisterNameNodeServiceServer(srv, nnSrv)
 
 	go srv.Serve(lis)
@@ -141,7 +141,7 @@ func TestNameNodeServer_BDD(t *testing.T) {
 		}
 
 		// Create file first
-		fm, _ := store.CreateFile("/wourifs/test/chunked.csv")
+		fm, _ := store.CreateFile("/wourifs/test/chunked.csv", 0644)
 
 		t.Run("When allocating a chunk with RF=3", func(t *testing.T) {
 			resp, err := client.AllocateChunk(context.Background(), &pb.AllocateChunkRequest{
@@ -185,7 +185,7 @@ func TestNameNodeServer_BDD(t *testing.T) {
 func TestNameNodeServerHandler_Direct(t *testing.T) {
 	store := NewMetadataStore(3)
 	reg := domainnn.NewInMemoryDataNodeRegistry()
-	srv := NewNameNodeServer(store, reg, nil)
+	srv := NewNameNodeServer(store, reg, nil, nil)
 
 	ctx := context.Background()
 
@@ -197,7 +197,7 @@ func TestNameNodeServerHandler_Direct(t *testing.T) {
 	})
 
 	t.Run("DeleteFile on non-existent", func(t *testing.T) {
-		store.CreateFile("/wourifs/test/to-delete.csv")
+		store.CreateFile("/wourifs/test/to-delete.csv", 0644)
 		_, err := srv.DeleteFile(ctx, &pb.DeleteFileRequest{Path: "/wourifs/test/to-delete.csv"})
 		if err == nil || status.Code(err) != codes.Internal {
 			t.Errorf("expected Internal error (no auth payload), got %v", err)

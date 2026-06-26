@@ -8,6 +8,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"log"
+	"log/slog"
 	"net"
 	"os"
 	"os/signal"
@@ -18,6 +19,7 @@ import (
 	domain "github.com/MiltonJ23/WouriFS/internal/domain/namenode"
 	jwtmgr "github.com/MiltonJ23/WouriFS/internal/auth/jwt"
 	"github.com/MiltonJ23/WouriFS/internal/namenode"
+	"github.com/MiltonJ23/WouriFS/internal/observability"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -98,7 +100,8 @@ func main() {
 		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
 	}
 	grpcSrv := grpc.NewServer(grpcOpts...)
-	nnSrv := namenode.NewNameNodeServer(store, reg, w)
+	nnLogger := observability.NewLogger(slog.LevelInfo)
+	nnSrv := namenode.NewNameNodeServer(store, reg, w, nnLogger)
 	pb.RegisterNameNodeServiceServer(grpcSrv, nnSrv)
 
 	// Start health monitor

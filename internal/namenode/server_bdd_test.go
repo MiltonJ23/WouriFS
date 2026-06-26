@@ -17,7 +17,7 @@ func TestNameNodeServer_FileOps(t *testing.T) {
 	store := NewMetadataStore(3)
 	reg := domainnn.NewInMemoryDataNodeRegistry()
 
-	nn := NewNameNodeServer(store, reg, nil)
+	nn := NewNameNodeServer(store, reg, nil, nil)
 
 	payload := &domain.TokenPayload{
 		UserID:    "user-1",

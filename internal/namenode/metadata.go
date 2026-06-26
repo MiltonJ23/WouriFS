@@ -10,31 +10,36 @@ import (
 	"github.com/MiltonJ23/WouriFS/internal/domain"
 )
 
-// FileMeta holds the Namenode record for one file.
+// FileMeta holds the Namenode record for a file or directory.
 type FileMeta struct {
 	FileID string
 	Path   string
 	Size   int64
-	Chunks []ChunkMeta // ordered, index = chunk_index
+	Mode   uint32 // POSIX permission bits
+	IsDir  bool
+	Mtime  time.Time
+	Ctime  time.Time
+	Chunks []ChunkMeta
 }
 
 // ChunkMeta maps a chunk to its replicas.
 type ChunkMeta struct {
 	ChunkID  string
 	Index    int
-	Replicas []string // datanode addresses holding this chunk
+	Replicas []string
 }
 
 // MetadataStore is the in-memory path→file mapping (FR-N-001).
 type MetadataStore struct {
-	mu        sync.RWMutex
-	files     map[string]*FileMeta // keyed by path
-	replFac   int32               // default replication factor (FR-N-008)
+	mu      sync.RWMutex
+	files   map[string]*FileMeta
+	replFac int32
 }
 
 var (
 	ErrFileNotFound    = errors.New("file not found")
 	ErrFileExists      = errors.New("file already exists")
+	ErrNotEmpty        = errors.New("directory not empty")
 	ErrNotADirectory   = errors.New("not a directory")
 	ErrPathInvalid     = errors.New("path is invalid")
 	ErrNamespaceDenied = errors.New("namespace access denied")
@@ -50,12 +55,9 @@ func NewMetadataStore(replicationFactor int32) *MetadataStore {
 	}
 }
 
-// CheckNamespace verifies the user's payload can access the given path (FR-N-007).
+// CheckNamespace verifies the user can access the given path (FR-N-007).
 func (m *MetadataStore) CheckNamespace(payload *domain.TokenPayload, path string) error {
-	if payload == nil {
-		return ErrNamespaceDenied
-	}
-	if payload.Namespace == "" {
+	if payload == nil || payload.Namespace == "" {
 		return ErrNamespaceDenied
 	}
 	if !hasPrefix(path, payload.Namespace) {
@@ -64,15 +66,15 @@ func (m *MetadataStore) CheckNamespace(payload *domain.TokenPayload, path string
 	return nil
 }
 
-// PutFile inserts a file record directly (used for WAL replay).
+// PutFile inserts a file record directly (WAL replay).
 func (m *MetadataStore) PutFile(fm *FileMeta) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.files[fm.Path] = fm
 }
 
-// CreateFile records a new empty file (FR-N-004: CreateFile).
-func (m *MetadataStore) CreateFile(path string) (*FileMeta, error) {
+// CreateFile records a new empty file.
+func (m *MetadataStore) CreateFile(path string, mode uint32) (*FileMeta, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -80,12 +82,68 @@ func (m *MetadataStore) CreateFile(path string) (*FileMeta, error) {
 		return nil, ErrFileExists
 	}
 
+	now := time.Now()
 	fm := &FileMeta{
 		FileID: newID(),
 		Path:   path,
+		Mode:   mode,
+		Mtime:  now,
+		Ctime:  now,
 	}
 	m.files[path] = fm
 	return fm, nil
+}
+
+// MakeDir creates a directory marker entry.
+func (m *MetadataStore) MakeDir(path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.files[path]; ok {
+		return ErrFileExists
+	}
+
+	now := time.Now()
+	m.files[path] = &FileMeta{
+		Path:  path,
+		Mode:  0755,
+		IsDir: true,
+		Mtime: now,
+		Ctime: now,
+	}
+	return nil
+}
+
+// RemoveDir removes a directory marker only if it has no children.
+func (m *MetadataStore) RemoveDir(path string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	fm, ok := m.files[path]
+	if !ok {
+		return ErrFileNotFound
+	}
+	if !fm.IsDir {
+		return ErrNotADirectory
+	}
+
+	prefix := path + "/"
+	for p := range m.files {
+		if p != path && hasPrefix(p, prefix) {
+			return ErrNotEmpty
+		}
+	}
+
+	delete(m.files, path)
+	return nil
+}
+
+// IsDir reports whether a path is a directory marker.
+func (m *MetadataStore) IsDir(path string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	fm, ok := m.files[path]
+	return ok && fm.IsDir
 }
 
 // GetFile retrieves file metadata by path.
@@ -100,19 +158,43 @@ func (m *MetadataStore) GetFile(path string) (*FileMeta, error) {
 	return fm, nil
 }
 
-// DeleteFile removes a file entry (does not delete chunks).
+// DeleteFile removes a file entry.
 func (m *MetadataStore) DeleteFile(path string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.files[path]; !ok {
+	fm, ok := m.files[path]
+	if !ok {
 		return ErrFileNotFound
+	}
+	if fm.IsDir {
+		return ErrNotADirectory
 	}
 	delete(m.files, path)
 	return nil
 }
 
-// ListDirectory returns DirEntry for all files whose path starts with dir + "/" (FR-N-004: ListDirectory).
+// Rename atomically moves a path from old to new.
+func (m *MetadataStore) Rename(oldPath, newPath string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	fm, ok := m.files[oldPath]
+	if !ok {
+		return ErrFileNotFound
+	}
+	if _, exists := m.files[newPath]; exists {
+		return ErrFileExists
+	}
+
+	fm.Path = newPath
+	fm.Mtime = time.Now()
+	delete(m.files, oldPath)
+	m.files[newPath] = fm
+	return nil
+}
+
+// ListDirectory returns entries for immediate children of dirPath.
 func (m *MetadataStore) ListDirectory(dirPath string) []DirEntry {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -124,7 +206,6 @@ func (m *MetadataStore) ListDirectory(dirPath string) []DirEntry {
 		if !hasPrefix(p, dirPath) || len(p) <= len(dirPath) {
 			continue
 		}
-		// extract the immediate child name
 		rest := p[len(dirPath):]
 		if rest[0] != '/' {
 			continue
@@ -139,25 +220,39 @@ func (m *MetadataStore) ListDirectory(dirPath string) []DirEntry {
 			continue
 		}
 		seen[name] = true
-		// Determine if it's a directory: any entry has prefix dirPath+"/"+name+"/"
-		isDir := false
-		prefix := p[:len(dirPath)+1+len(name)] + "/"
-		for q := range m.files {
-			if q != p && hasPrefix(q, prefix) {
-				isDir = true
-				break
+
+		isDir := fm.IsDir
+		// Also detect implicit directories (files with deeper children)
+		if !isDir {
+			prefix := p[:len(dirPath)+1+len(name)] + "/"
+			for q := range m.files {
+				if q != p && hasPrefix(q, prefix) {
+					isDir = true
+					break
+				}
 			}
 		}
+
+		mode := fm.Mode
+		if mode == 0 && isDir {
+			mode = 0755
+		}
+		if mode == 0 {
+			mode = 0644
+		}
+
 		entries = append(entries, DirEntry{
 			Name:  name,
 			IsDir: isDir,
 			Size:  fm.Size,
+			Mode:  mode,
+			Mtime: fm.Mtime,
 		})
 	}
 	return entries
 }
 
-// AddChunk appends a chunk to a file's metadata (FR-N-001, FR-N-006).
+// AddChunk appends a chunk to a file's metadata.
 func (m *MetadataStore) AddChunk(fileID string, chunkID string, replicas []string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -175,21 +270,12 @@ func (m *MetadataStore) AddChunk(fileID string, chunkID string, replicas []strin
 	return ErrFileNotFound
 }
 
-// UpdateSize sets the file byte size.
-func (m *MetadataStore) UpdateSize(path string, size int64) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if fm, ok := m.files[path]; ok {
-		fm.Size = size
-	}
-}
-
 // ReplicationFactor returns the store's default replication factor.
 func (m *MetadataStore) ReplicationFactor() int32 {
 	return m.replFac
 }
 
-// Snapshot returns a copy of all metadata for WAL checkpointing.
+// Snapshot returns a copy of all metadata.
 func (m *MetadataStore) Snapshot() map[string]*FileMeta {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -206,26 +292,26 @@ func (m *MetadataStore) Snapshot() map[string]*FileMeta {
 	return out
 }
 
-// Restore replaces the in-memory state with a previously saved snapshot.
+// Restore replaces in-memory state with a snapshot.
 func (m *MetadataStore) Restore(snapshot map[string]*FileMeta) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.files = snapshot
 }
 
-// DirEntry is exported for use by the gRPC server layer.
+// DirEntry is exported for the gRPC server layer.
 type DirEntry struct {
 	Name  string
 	IsDir bool
 	Size  int64
+	Mode  uint32
+	Mtime time.Time
 }
 
-// Internal helper: prefix matching.
 func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
-// newID generates a random hex ID, avoiding external UUID dependency.
 func newID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
@@ -233,5 +319,3 @@ func newID() string {
 	b[8] = (b[8] & 0x3f) | 0x80
 	return hex.EncodeToString(b)
 }
-
-var _ = time.Now
