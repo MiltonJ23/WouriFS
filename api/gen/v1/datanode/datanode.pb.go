@@ -21,6 +21,118 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type StatusRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatusRequest) Reset() {
+	*x = StatusRequest{}
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatusRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatusRequest) ProtoMessage() {}
+
+func (x *StatusRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatusRequest.ProtoReflect.Descriptor instead.
+func (*StatusRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{0}
+}
+
+type StatusResponse struct {
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	TotalBytes        int64                  `protobuf:"varint,1,opt,name=total_bytes,json=totalBytes,proto3" json:"total_bytes,omitempty"`
+	FreeBytes         int64                  `protobuf:"varint,2,opt,name=free_bytes,json=freeBytes,proto3" json:"free_bytes,omitempty"`
+	UsedBytes         int64                  `protobuf:"varint,3,opt,name=used_bytes,json=usedBytes,proto3" json:"used_bytes,omitempty"`
+	ChunkCount        int32                  `protobuf:"varint,4,opt,name=chunk_count,json=chunkCount,proto3" json:"chunk_count,omitempty"`
+	ActiveConnections int32                  `protobuf:"varint,5,opt,name=active_connections,json=activeConnections,proto3" json:"active_connections,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
+}
+
+func (x *StatusResponse) Reset() {
+	*x = StatusResponse{}
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatusResponse) ProtoMessage() {}
+
+func (x *StatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatusResponse.ProtoReflect.Descriptor instead.
+func (*StatusResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *StatusResponse) GetTotalBytes() int64 {
+	if x != nil {
+		return x.TotalBytes
+	}
+	return 0
+}
+
+func (x *StatusResponse) GetFreeBytes() int64 {
+	if x != nil {
+		return x.FreeBytes
+	}
+	return 0
+}
+
+func (x *StatusResponse) GetUsedBytes() int64 {
+	if x != nil {
+		return x.UsedBytes
+	}
+	return 0
+}
+
+func (x *StatusResponse) GetChunkCount() int32 {
+	if x != nil {
+		return x.ChunkCount
+	}
+	return 0
+}
+
+func (x *StatusResponse) GetActiveConnections() int32 {
+	if x != nil {
+		return x.ActiveConnections
+	}
+	return 0
+}
+
 type WriteChunkRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	ChunkId       string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
@@ -33,7 +145,7 @@ type WriteChunkRequest struct {
 
 func (x *WriteChunkRequest) Reset() {
 	*x = WriteChunkRequest{}
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[0]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +157,7 @@ func (x *WriteChunkRequest) String() string {
 func (*WriteChunkRequest) ProtoMessage() {}
 
 func (x *WriteChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[0]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +170,7 @@ func (x *WriteChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteChunkRequest.ProtoReflect.Descriptor instead.
 func (*WriteChunkRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{0}
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *WriteChunkRequest) GetChunkId() string {
@@ -99,7 +211,7 @@ type WriteChunkResponse struct {
 
 func (x *WriteChunkResponse) Reset() {
 	*x = WriteChunkResponse{}
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[1]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -111,7 +223,7 @@ func (x *WriteChunkResponse) String() string {
 func (*WriteChunkResponse) ProtoMessage() {}
 
 func (x *WriteChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[1]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -124,7 +236,7 @@ func (x *WriteChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WriteChunkResponse.ProtoReflect.Descriptor instead.
 func (*WriteChunkResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{1}
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *WriteChunkResponse) GetChunkId() string {
@@ -150,7 +262,7 @@ type ReadChunkRequest struct {
 
 func (x *ReadChunkRequest) Reset() {
 	*x = ReadChunkRequest{}
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[2]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -162,7 +274,7 @@ func (x *ReadChunkRequest) String() string {
 func (*ReadChunkRequest) ProtoMessage() {}
 
 func (x *ReadChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[2]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -175,7 +287,7 @@ func (x *ReadChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadChunkRequest.ProtoReflect.Descriptor instead.
 func (*ReadChunkRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{2}
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ReadChunkRequest) GetChunkId() string {
@@ -196,7 +308,7 @@ type ReadChunkResponse struct {
 
 func (x *ReadChunkResponse) Reset() {
 	*x = ReadChunkResponse{}
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[3]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -208,7 +320,7 @@ func (x *ReadChunkResponse) String() string {
 func (*ReadChunkResponse) ProtoMessage() {}
 
 func (x *ReadChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[3]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -221,7 +333,7 @@ func (x *ReadChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReadChunkResponse.ProtoReflect.Descriptor instead.
 func (*ReadChunkResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{3}
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ReadChunkResponse) GetData() []byte {
@@ -254,7 +366,7 @@ type DeleteChunkRequest struct {
 
 func (x *DeleteChunkRequest) Reset() {
 	*x = DeleteChunkRequest{}
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[4]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -266,7 +378,7 @@ func (x *DeleteChunkRequest) String() string {
 func (*DeleteChunkRequest) ProtoMessage() {}
 
 func (x *DeleteChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[4]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -279,7 +391,7 @@ func (x *DeleteChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteChunkRequest.ProtoReflect.Descriptor instead.
 func (*DeleteChunkRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{4}
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *DeleteChunkRequest) GetChunkId() string {
@@ -297,7 +409,7 @@ type DeleteChunkResponse struct {
 
 func (x *DeleteChunkResponse) Reset() {
 	*x = DeleteChunkResponse{}
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[5]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -309,7 +421,7 @@ func (x *DeleteChunkResponse) String() string {
 func (*DeleteChunkResponse) ProtoMessage() {}
 
 func (x *DeleteChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[5]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -322,7 +434,7 @@ func (x *DeleteChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DeleteChunkResponse.ProtoReflect.Descriptor instead.
 func (*DeleteChunkResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{5}
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{7}
 }
 
 type ReplicateChunkRequest struct {
@@ -337,7 +449,7 @@ type ReplicateChunkRequest struct {
 
 func (x *ReplicateChunkRequest) Reset() {
 	*x = ReplicateChunkRequest{}
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[6]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -349,7 +461,7 @@ func (x *ReplicateChunkRequest) String() string {
 func (*ReplicateChunkRequest) ProtoMessage() {}
 
 func (x *ReplicateChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[6]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -362,7 +474,7 @@ func (x *ReplicateChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicateChunkRequest.ProtoReflect.Descriptor instead.
 func (*ReplicateChunkRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{6}
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ReplicateChunkRequest) GetChunkId() string {
@@ -403,7 +515,7 @@ type ReplicateChunkResponse struct {
 
 func (x *ReplicateChunkResponse) Reset() {
 	*x = ReplicateChunkResponse{}
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[7]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -415,7 +527,7 @@ func (x *ReplicateChunkResponse) String() string {
 func (*ReplicateChunkResponse) ProtoMessage() {}
 
 func (x *ReplicateChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_datanode_proto_msgTypes[7]
+	mi := &file_api_proto_v1_datanode_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -428,7 +540,7 @@ func (x *ReplicateChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicateChunkResponse.ProtoReflect.Descriptor instead.
 func (*ReplicateChunkResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{7}
+	return file_api_proto_v1_datanode_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ReplicateChunkResponse) GetChunkId() string {
@@ -449,7 +561,18 @@ var File_api_proto_v1_datanode_proto protoreflect.FileDescriptor
 
 const file_api_proto_v1_datanode_proto_rawDesc = "" +
 	"\n" +
-	"\x1bapi/proto/v1/datanode.proto\x12\x13wourifs.datanode.v1\"|\n" +
+	"\x1bapi/proto/v1/datanode.proto\x12\x13wourifs.datanode.v1\"\x0f\n" +
+	"\rStatusRequest\"\xbf\x01\n" +
+	"\x0eStatusResponse\x12\x1f\n" +
+	"\vtotal_bytes\x18\x01 \x01(\x03R\n" +
+	"totalBytes\x12\x1d\n" +
+	"\n" +
+	"free_bytes\x18\x02 \x01(\x03R\tfreeBytes\x12\x1d\n" +
+	"\n" +
+	"used_bytes\x18\x03 \x01(\x03R\tusedBytes\x12\x1f\n" +
+	"\vchunk_count\x18\x04 \x01(\x05R\n" +
+	"chunkCount\x12-\n" +
+	"\x12active_connections\x18\x05 \x01(\x05R\x11activeConnections\"|\n" +
 	"\x11WriteChunkRequest\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12\x12\n" +
 	"\x04data\x18\x02 \x01(\fR\x04data\x12\x1f\n" +
@@ -477,13 +600,14 @@ const file_api_proto_v1_datanode_proto_rawDesc = "" +
 	"\ais_last\x18\x04 \x01(\bR\x06isLast\"X\n" +
 	"\x16ReplicateChunkResponse\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12#\n" +
-	"\rbytes_written\x18\x02 \x01(\x03R\fbytesWritten2\x9f\x03\n" +
+	"\rbytes_written\x18\x02 \x01(\x03R\fbytesWritten2\xf2\x03\n" +
 	"\x0fDataNodeService\x12_\n" +
 	"\n" +
 	"WriteChunk\x12&.wourifs.datanode.v1.WriteChunkRequest\x1a'.wourifs.datanode.v1.WriteChunkResponse(\x01\x12\\\n" +
 	"\tReadChunk\x12%.wourifs.datanode.v1.ReadChunkRequest\x1a&.wourifs.datanode.v1.ReadChunkResponse0\x01\x12`\n" +
 	"\vDeleteChunk\x12'.wourifs.datanode.v1.DeleteChunkRequest\x1a(.wourifs.datanode.v1.DeleteChunkResponse\x12k\n" +
-	"\x0eReplicateChunk\x12*.wourifs.datanode.v1.ReplicateChunkRequest\x1a+.wourifs.datanode.v1.ReplicateChunkResponse(\x01B=Z;github.com/MiltonJ23/WouriFS/api/gen/v1/datanode;datanodepbb\x06proto3"
+	"\x0eReplicateChunk\x12*.wourifs.datanode.v1.ReplicateChunkRequest\x1a+.wourifs.datanode.v1.ReplicateChunkResponse(\x01\x12Q\n" +
+	"\x06Status\x12\".wourifs.datanode.v1.StatusRequest\x1a#.wourifs.datanode.v1.StatusResponseB=Z;github.com/MiltonJ23/WouriFS/api/gen/v1/datanode;datanodepbb\x06proto3"
 
 var (
 	file_api_proto_v1_datanode_proto_rawDescOnce sync.Once
@@ -497,28 +621,32 @@ func file_api_proto_v1_datanode_proto_rawDescGZIP() []byte {
 	return file_api_proto_v1_datanode_proto_rawDescData
 }
 
-var file_api_proto_v1_datanode_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_api_proto_v1_datanode_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_api_proto_v1_datanode_proto_goTypes = []any{
-	(*WriteChunkRequest)(nil),      // 0: wourifs.datanode.v1.WriteChunkRequest
-	(*WriteChunkResponse)(nil),     // 1: wourifs.datanode.v1.WriteChunkResponse
-	(*ReadChunkRequest)(nil),       // 2: wourifs.datanode.v1.ReadChunkRequest
-	(*ReadChunkResponse)(nil),      // 3: wourifs.datanode.v1.ReadChunkResponse
-	(*DeleteChunkRequest)(nil),     // 4: wourifs.datanode.v1.DeleteChunkRequest
-	(*DeleteChunkResponse)(nil),    // 5: wourifs.datanode.v1.DeleteChunkResponse
-	(*ReplicateChunkRequest)(nil),  // 6: wourifs.datanode.v1.ReplicateChunkRequest
-	(*ReplicateChunkResponse)(nil), // 7: wourifs.datanode.v1.ReplicateChunkResponse
+	(*StatusRequest)(nil),          // 0: wourifs.datanode.v1.StatusRequest
+	(*StatusResponse)(nil),         // 1: wourifs.datanode.v1.StatusResponse
+	(*WriteChunkRequest)(nil),      // 2: wourifs.datanode.v1.WriteChunkRequest
+	(*WriteChunkResponse)(nil),     // 3: wourifs.datanode.v1.WriteChunkResponse
+	(*ReadChunkRequest)(nil),       // 4: wourifs.datanode.v1.ReadChunkRequest
+	(*ReadChunkResponse)(nil),      // 5: wourifs.datanode.v1.ReadChunkResponse
+	(*DeleteChunkRequest)(nil),     // 6: wourifs.datanode.v1.DeleteChunkRequest
+	(*DeleteChunkResponse)(nil),    // 7: wourifs.datanode.v1.DeleteChunkResponse
+	(*ReplicateChunkRequest)(nil),  // 8: wourifs.datanode.v1.ReplicateChunkRequest
+	(*ReplicateChunkResponse)(nil), // 9: wourifs.datanode.v1.ReplicateChunkResponse
 }
 var file_api_proto_v1_datanode_proto_depIdxs = []int32{
-	0, // 0: wourifs.datanode.v1.DataNodeService.WriteChunk:input_type -> wourifs.datanode.v1.WriteChunkRequest
-	2, // 1: wourifs.datanode.v1.DataNodeService.ReadChunk:input_type -> wourifs.datanode.v1.ReadChunkRequest
-	4, // 2: wourifs.datanode.v1.DataNodeService.DeleteChunk:input_type -> wourifs.datanode.v1.DeleteChunkRequest
-	6, // 3: wourifs.datanode.v1.DataNodeService.ReplicateChunk:input_type -> wourifs.datanode.v1.ReplicateChunkRequest
-	1, // 4: wourifs.datanode.v1.DataNodeService.WriteChunk:output_type -> wourifs.datanode.v1.WriteChunkResponse
-	3, // 5: wourifs.datanode.v1.DataNodeService.ReadChunk:output_type -> wourifs.datanode.v1.ReadChunkResponse
-	5, // 6: wourifs.datanode.v1.DataNodeService.DeleteChunk:output_type -> wourifs.datanode.v1.DeleteChunkResponse
-	7, // 7: wourifs.datanode.v1.DataNodeService.ReplicateChunk:output_type -> wourifs.datanode.v1.ReplicateChunkResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
+	2, // 0: wourifs.datanode.v1.DataNodeService.WriteChunk:input_type -> wourifs.datanode.v1.WriteChunkRequest
+	4, // 1: wourifs.datanode.v1.DataNodeService.ReadChunk:input_type -> wourifs.datanode.v1.ReadChunkRequest
+	6, // 2: wourifs.datanode.v1.DataNodeService.DeleteChunk:input_type -> wourifs.datanode.v1.DeleteChunkRequest
+	8, // 3: wourifs.datanode.v1.DataNodeService.ReplicateChunk:input_type -> wourifs.datanode.v1.ReplicateChunkRequest
+	0, // 4: wourifs.datanode.v1.DataNodeService.Status:input_type -> wourifs.datanode.v1.StatusRequest
+	3, // 5: wourifs.datanode.v1.DataNodeService.WriteChunk:output_type -> wourifs.datanode.v1.WriteChunkResponse
+	5, // 6: wourifs.datanode.v1.DataNodeService.ReadChunk:output_type -> wourifs.datanode.v1.ReadChunkResponse
+	7, // 7: wourifs.datanode.v1.DataNodeService.DeleteChunk:output_type -> wourifs.datanode.v1.DeleteChunkResponse
+	9, // 8: wourifs.datanode.v1.DataNodeService.ReplicateChunk:output_type -> wourifs.datanode.v1.ReplicateChunkResponse
+	1, // 9: wourifs.datanode.v1.DataNodeService.Status:output_type -> wourifs.datanode.v1.StatusResponse
+	5, // [5:10] is the sub-list for method output_type
+	0, // [0:5] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -535,7 +663,7 @@ func file_api_proto_v1_datanode_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_v1_datanode_proto_rawDesc), len(file_api_proto_v1_datanode_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

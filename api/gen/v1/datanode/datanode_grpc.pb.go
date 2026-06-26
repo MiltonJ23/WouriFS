@@ -23,6 +23,7 @@ const (
 	DataNodeService_ReadChunk_FullMethodName      = "/wourifs.datanode.v1.DataNodeService/ReadChunk"
 	DataNodeService_DeleteChunk_FullMethodName    = "/wourifs.datanode.v1.DataNodeService/DeleteChunk"
 	DataNodeService_ReplicateChunk_FullMethodName = "/wourifs.datanode.v1.DataNodeService/ReplicateChunk"
+	DataNodeService_Status_FullMethodName         = "/wourifs.datanode.v1.DataNodeService/Status"
 )
 
 // DataNodeServiceClient is the client API for DataNodeService service.
@@ -37,6 +38,8 @@ type DataNodeServiceClient interface {
 	DeleteChunk(ctx context.Context, in *DeleteChunkRequest, opts ...grpc.CallOption) (*DeleteChunkResponse, error)
 	// Accept a replicated chunk from a peer Datanode (FR-D-004)
 	ReplicateChunk(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[ReplicateChunkRequest, ReplicateChunkResponse], error)
+	// Status returns health and capacity info (observability endpoint)
+	Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error)
 }
 
 type dataNodeServiceClient struct {
@@ -102,6 +105,16 @@ func (c *dataNodeServiceClient) ReplicateChunk(ctx context.Context, opts ...grpc
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type DataNodeService_ReplicateChunkClient = grpc.ClientStreamingClient[ReplicateChunkRequest, ReplicateChunkResponse]
 
+func (c *dataNodeServiceClient) Status(ctx context.Context, in *StatusRequest, opts ...grpc.CallOption) (*StatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatusResponse)
+	err := c.cc.Invoke(ctx, DataNodeService_Status_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DataNodeServiceServer is the server API for DataNodeService service.
 // All implementations must embed UnimplementedDataNodeServiceServer
 // for forward compatibility.
@@ -114,6 +127,8 @@ type DataNodeServiceServer interface {
 	DeleteChunk(context.Context, *DeleteChunkRequest) (*DeleteChunkResponse, error)
 	// Accept a replicated chunk from a peer Datanode (FR-D-004)
 	ReplicateChunk(grpc.ClientStreamingServer[ReplicateChunkRequest, ReplicateChunkResponse]) error
+	// Status returns health and capacity info (observability endpoint)
+	Status(context.Context, *StatusRequest) (*StatusResponse, error)
 	mustEmbedUnimplementedDataNodeServiceServer()
 }
 
@@ -135,6 +150,9 @@ func (UnimplementedDataNodeServiceServer) DeleteChunk(context.Context, *DeleteCh
 }
 func (UnimplementedDataNodeServiceServer) ReplicateChunk(grpc.ClientStreamingServer[ReplicateChunkRequest, ReplicateChunkResponse]) error {
 	return status.Error(codes.Unimplemented, "method ReplicateChunk not implemented")
+}
+func (UnimplementedDataNodeServiceServer) Status(context.Context, *StatusRequest) (*StatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Status not implemented")
 }
 func (UnimplementedDataNodeServiceServer) mustEmbedUnimplementedDataNodeServiceServer() {}
 func (UnimplementedDataNodeServiceServer) testEmbeddedByValue()                         {}
@@ -200,6 +218,24 @@ func _DataNodeService_ReplicateChunk_Handler(srv interface{}, stream grpc.Server
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type DataNodeService_ReplicateChunkServer = grpc.ClientStreamingServer[ReplicateChunkRequest, ReplicateChunkResponse]
 
+func _DataNodeService_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StatusRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DataNodeServiceServer).Status(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DataNodeService_Status_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DataNodeServiceServer).Status(ctx, req.(*StatusRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DataNodeService_ServiceDesc is the grpc.ServiceDesc for DataNodeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -210,6 +246,10 @@ var DataNodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeleteChunk",
 			Handler:    _DataNodeService_DeleteChunk_Handler,
+		},
+		{
+			MethodName: "Status",
+			Handler:    _DataNodeService_Status_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{

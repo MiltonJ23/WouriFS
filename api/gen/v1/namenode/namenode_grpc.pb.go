@@ -25,6 +25,11 @@ const (
 	NameNodeService_DeleteFile_FullMethodName       = "/wourifs.namenode.v1.NameNodeService/DeleteFile"
 	NameNodeService_LookupFile_FullMethodName       = "/wourifs.namenode.v1.NameNodeService/LookupFile"
 	NameNodeService_ListDirectory_FullMethodName    = "/wourifs.namenode.v1.NameNodeService/ListDirectory"
+	NameNodeService_MakeDirectory_FullMethodName    = "/wourifs.namenode.v1.NameNodeService/MakeDirectory"
+	NameNodeService_RemoveDirectory_FullMethodName  = "/wourifs.namenode.v1.NameNodeService/RemoveDirectory"
+	NameNodeService_RenameFile_FullMethodName       = "/wourifs.namenode.v1.NameNodeService/RenameFile"
+	NameNodeService_StatFile_FullMethodName         = "/wourifs.namenode.v1.NameNodeService/StatFile"
+	NameNodeService_TruncateFile_FullMethodName     = "/wourifs.namenode.v1.NameNodeService/TruncateFile"
 	NameNodeService_AllocateChunk_FullMethodName    = "/wourifs.namenode.v1.NameNodeService/AllocateChunk"
 )
 
@@ -35,12 +40,17 @@ type NameNodeServiceClient interface {
 	// DataNode lifecycle
 	RegisterDataNode(ctx context.Context, in *RegisterDataNodeRequest, opts ...grpc.CallOption) (*RegisterDataNodeResponse, error)
 	Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error)
-	// File operations (FR-N-004)
+	// File & directory operations
 	CreateFile(ctx context.Context, in *CreateFileRequest, opts ...grpc.CallOption) (*CreateFileResponse, error)
 	DeleteFile(ctx context.Context, in *DeleteFileRequest, opts ...grpc.CallOption) (*DeleteFileResponse, error)
 	LookupFile(ctx context.Context, in *LookupFileRequest, opts ...grpc.CallOption) (*LookupFileResponse, error)
 	ListDirectory(ctx context.Context, in *ListDirectoryRequest, opts ...grpc.CallOption) (*ListDirectoryResponse, error)
-	// Chunk allocation (FR-N-004, FR-N-008)
+	MakeDirectory(ctx context.Context, in *MakeDirectoryRequest, opts ...grpc.CallOption) (*MakeDirectoryResponse, error)
+	RemoveDirectory(ctx context.Context, in *RemoveDirectoryRequest, opts ...grpc.CallOption) (*RemoveDirectoryResponse, error)
+	RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*RenameFileResponse, error)
+	StatFile(ctx context.Context, in *StatFileRequest, opts ...grpc.CallOption) (*StatFileResponse, error)
+	TruncateFile(ctx context.Context, in *TruncateFileRequest, opts ...grpc.CallOption) (*TruncateFileResponse, error)
+	// Chunk allocation
 	AllocateChunk(ctx context.Context, in *AllocateChunkRequest, opts ...grpc.CallOption) (*AllocateChunkResponse, error)
 }
 
@@ -112,6 +122,56 @@ func (c *nameNodeServiceClient) ListDirectory(ctx context.Context, in *ListDirec
 	return out, nil
 }
 
+func (c *nameNodeServiceClient) MakeDirectory(ctx context.Context, in *MakeDirectoryRequest, opts ...grpc.CallOption) (*MakeDirectoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MakeDirectoryResponse)
+	err := c.cc.Invoke(ctx, NameNodeService_MakeDirectory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nameNodeServiceClient) RemoveDirectory(ctx context.Context, in *RemoveDirectoryRequest, opts ...grpc.CallOption) (*RemoveDirectoryResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RemoveDirectoryResponse)
+	err := c.cc.Invoke(ctx, NameNodeService_RemoveDirectory_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nameNodeServiceClient) RenameFile(ctx context.Context, in *RenameFileRequest, opts ...grpc.CallOption) (*RenameFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RenameFileResponse)
+	err := c.cc.Invoke(ctx, NameNodeService_RenameFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nameNodeServiceClient) StatFile(ctx context.Context, in *StatFileRequest, opts ...grpc.CallOption) (*StatFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(StatFileResponse)
+	err := c.cc.Invoke(ctx, NameNodeService_StatFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *nameNodeServiceClient) TruncateFile(ctx context.Context, in *TruncateFileRequest, opts ...grpc.CallOption) (*TruncateFileResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(TruncateFileResponse)
+	err := c.cc.Invoke(ctx, NameNodeService_TruncateFile_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nameNodeServiceClient) AllocateChunk(ctx context.Context, in *AllocateChunkRequest, opts ...grpc.CallOption) (*AllocateChunkResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AllocateChunkResponse)
@@ -129,12 +189,17 @@ type NameNodeServiceServer interface {
 	// DataNode lifecycle
 	RegisterDataNode(context.Context, *RegisterDataNodeRequest) (*RegisterDataNodeResponse, error)
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
-	// File operations (FR-N-004)
+	// File & directory operations
 	CreateFile(context.Context, *CreateFileRequest) (*CreateFileResponse, error)
 	DeleteFile(context.Context, *DeleteFileRequest) (*DeleteFileResponse, error)
 	LookupFile(context.Context, *LookupFileRequest) (*LookupFileResponse, error)
 	ListDirectory(context.Context, *ListDirectoryRequest) (*ListDirectoryResponse, error)
-	// Chunk allocation (FR-N-004, FR-N-008)
+	MakeDirectory(context.Context, *MakeDirectoryRequest) (*MakeDirectoryResponse, error)
+	RemoveDirectory(context.Context, *RemoveDirectoryRequest) (*RemoveDirectoryResponse, error)
+	RenameFile(context.Context, *RenameFileRequest) (*RenameFileResponse, error)
+	StatFile(context.Context, *StatFileRequest) (*StatFileResponse, error)
+	TruncateFile(context.Context, *TruncateFileRequest) (*TruncateFileResponse, error)
+	// Chunk allocation
 	AllocateChunk(context.Context, *AllocateChunkRequest) (*AllocateChunkResponse, error)
 	mustEmbedUnimplementedNameNodeServiceServer()
 }
@@ -163,6 +228,21 @@ func (UnimplementedNameNodeServiceServer) LookupFile(context.Context, *LookupFil
 }
 func (UnimplementedNameNodeServiceServer) ListDirectory(context.Context, *ListDirectoryRequest) (*ListDirectoryResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method ListDirectory not implemented")
+}
+func (UnimplementedNameNodeServiceServer) MakeDirectory(context.Context, *MakeDirectoryRequest) (*MakeDirectoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method MakeDirectory not implemented")
+}
+func (UnimplementedNameNodeServiceServer) RemoveDirectory(context.Context, *RemoveDirectoryRequest) (*RemoveDirectoryResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RemoveDirectory not implemented")
+}
+func (UnimplementedNameNodeServiceServer) RenameFile(context.Context, *RenameFileRequest) (*RenameFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RenameFile not implemented")
+}
+func (UnimplementedNameNodeServiceServer) StatFile(context.Context, *StatFileRequest) (*StatFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method StatFile not implemented")
+}
+func (UnimplementedNameNodeServiceServer) TruncateFile(context.Context, *TruncateFileRequest) (*TruncateFileResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method TruncateFile not implemented")
 }
 func (UnimplementedNameNodeServiceServer) AllocateChunk(context.Context, *AllocateChunkRequest) (*AllocateChunkResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method AllocateChunk not implemented")
@@ -296,6 +376,96 @@ func _NameNodeService_ListDirectory_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NameNodeService_MakeDirectory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MakeDirectoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NameNodeServiceServer).MakeDirectory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NameNodeService_MakeDirectory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NameNodeServiceServer).MakeDirectory(ctx, req.(*MakeDirectoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NameNodeService_RemoveDirectory_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RemoveDirectoryRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NameNodeServiceServer).RemoveDirectory(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NameNodeService_RemoveDirectory_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NameNodeServiceServer).RemoveDirectory(ctx, req.(*RemoveDirectoryRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NameNodeService_RenameFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RenameFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NameNodeServiceServer).RenameFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NameNodeService_RenameFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NameNodeServiceServer).RenameFile(ctx, req.(*RenameFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NameNodeService_StatFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(StatFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NameNodeServiceServer).StatFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NameNodeService_StatFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NameNodeServiceServer).StatFile(ctx, req.(*StatFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _NameNodeService_TruncateFile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TruncateFileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NameNodeServiceServer).TruncateFile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NameNodeService_TruncateFile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NameNodeServiceServer).TruncateFile(ctx, req.(*TruncateFileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NameNodeService_AllocateChunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AllocateChunkRequest)
 	if err := dec(in); err != nil {
@@ -344,6 +514,26 @@ var NameNodeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListDirectory",
 			Handler:    _NameNodeService_ListDirectory_Handler,
+		},
+		{
+			MethodName: "MakeDirectory",
+			Handler:    _NameNodeService_MakeDirectory_Handler,
+		},
+		{
+			MethodName: "RemoveDirectory",
+			Handler:    _NameNodeService_RemoveDirectory_Handler,
+		},
+		{
+			MethodName: "RenameFile",
+			Handler:    _NameNodeService_RenameFile_Handler,
+		},
+		{
+			MethodName: "StatFile",
+			Handler:    _NameNodeService_StatFile_Handler,
+		},
+		{
+			MethodName: "TruncateFile",
+			Handler:    _NameNodeService_TruncateFile_Handler,
 		},
 		{
 			MethodName: "AllocateChunk",

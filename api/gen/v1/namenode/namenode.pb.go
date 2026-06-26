@@ -291,7 +291,8 @@ func (x *ChunkLocation) GetDatanodeAddress() string {
 
 type CreateFileRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"` // full path within namespace, e.g. "/ledgers/2026/q1.csv"
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Mode          uint32                 `protobuf:"varint,2,opt,name=mode,proto3" json:"mode,omitempty"` // POSIX permission bits (default 0644)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -333,9 +334,16 @@ func (x *CreateFileRequest) GetPath() string {
 	return ""
 }
 
+func (x *CreateFileRequest) GetMode() uint32 {
+	if x != nil {
+		return x.Mode
+	}
+	return 0
+}
+
 type CreateFileResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"` // UUID assigned by Namenode
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -504,7 +512,10 @@ func (x *LookupFileRequest) GetPath() string {
 type LookupFileResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
-	Chunks        []*ChunkLocation       `protobuf:"bytes,2,rep,name=chunks,proto3" json:"chunks,omitempty"` // ordered list of chunks with locations
+	Chunks        []*ChunkLocation       `protobuf:"bytes,2,rep,name=chunks,proto3" json:"chunks,omitempty"`
+	SizeBytes     int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	Mode          uint32                 `protobuf:"varint,4,opt,name=mode,proto3" json:"mode,omitempty"`
+	MtimeUnix     int64                  `protobuf:"varint,5,opt,name=mtime_unix,json=mtimeUnix,proto3" json:"mtime_unix,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -553,9 +564,30 @@ func (x *LookupFileResponse) GetChunks() []*ChunkLocation {
 	return nil
 }
 
+func (x *LookupFileResponse) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *LookupFileResponse) GetMode() uint32 {
+	if x != nil {
+		return x.Mode
+	}
+	return 0
+}
+
+func (x *LookupFileResponse) GetMtimeUnix() int64 {
+	if x != nil {
+		return x.MtimeUnix
+	}
+	return 0
+}
+
 type ListDirectoryRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"` // directory path, empty means namespace root
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -602,6 +634,8 @@ type DirEntry struct {
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	IsDir         bool                   `protobuf:"varint,2,opt,name=is_dir,json=isDir,proto3" json:"is_dir,omitempty"`
 	SizeBytes     int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	Mode          uint32                 `protobuf:"varint,4,opt,name=mode,proto3" json:"mode,omitempty"`
+	MtimeUnix     int64                  `protobuf:"varint,5,opt,name=mtime_unix,json=mtimeUnix,proto3" json:"mtime_unix,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -657,6 +691,20 @@ func (x *DirEntry) GetSizeBytes() int64 {
 	return 0
 }
 
+func (x *DirEntry) GetMode() uint32 {
+	if x != nil {
+		return x.Mode
+	}
+	return 0
+}
+
+func (x *DirEntry) GetMtimeUnix() int64 {
+	if x != nil {
+		return x.MtimeUnix
+	}
+	return 0
+}
+
 type ListDirectoryResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Entries       []*DirEntry            `protobuf:"bytes,1,rep,name=entries,proto3" json:"entries,omitempty"`
@@ -701,18 +749,498 @@ func (x *ListDirectoryResponse) GetEntries() []*DirEntry {
 	return nil
 }
 
+type MakeDirectoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	Mode          uint32                 `protobuf:"varint,2,opt,name=mode,proto3" json:"mode,omitempty"` // default 0755
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MakeDirectoryRequest) Reset() {
+	*x = MakeDirectoryRequest{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MakeDirectoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MakeDirectoryRequest) ProtoMessage() {}
+
+func (x *MakeDirectoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MakeDirectoryRequest.ProtoReflect.Descriptor instead.
+func (*MakeDirectoryRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *MakeDirectoryRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *MakeDirectoryRequest) GetMode() uint32 {
+	if x != nil {
+		return x.Mode
+	}
+	return 0
+}
+
+type MakeDirectoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MakeDirectoryResponse) Reset() {
+	*x = MakeDirectoryResponse{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MakeDirectoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MakeDirectoryResponse) ProtoMessage() {}
+
+func (x *MakeDirectoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MakeDirectoryResponse.ProtoReflect.Descriptor instead.
+func (*MakeDirectoryResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{15}
+}
+
+type RemoveDirectoryRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveDirectoryRequest) Reset() {
+	*x = RemoveDirectoryRequest{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveDirectoryRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveDirectoryRequest) ProtoMessage() {}
+
+func (x *RemoveDirectoryRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveDirectoryRequest.ProtoReflect.Descriptor instead.
+func (*RemoveDirectoryRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *RemoveDirectoryRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type RemoveDirectoryResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RemoveDirectoryResponse) Reset() {
+	*x = RemoveDirectoryResponse{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[17]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RemoveDirectoryResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RemoveDirectoryResponse) ProtoMessage() {}
+
+func (x *RemoveDirectoryResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[17]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RemoveDirectoryResponse.ProtoReflect.Descriptor instead.
+func (*RemoveDirectoryResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{17}
+}
+
+type RenameFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	OldPath       string                 `protobuf:"bytes,1,opt,name=old_path,json=oldPath,proto3" json:"old_path,omitempty"`
+	NewPath       string                 `protobuf:"bytes,2,opt,name=new_path,json=newPath,proto3" json:"new_path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenameFileRequest) Reset() {
+	*x = RenameFileRequest{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[18]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenameFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenameFileRequest) ProtoMessage() {}
+
+func (x *RenameFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[18]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenameFileRequest.ProtoReflect.Descriptor instead.
+func (*RenameFileRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{18}
+}
+
+func (x *RenameFileRequest) GetOldPath() string {
+	if x != nil {
+		return x.OldPath
+	}
+	return ""
+}
+
+func (x *RenameFileRequest) GetNewPath() string {
+	if x != nil {
+		return x.NewPath
+	}
+	return ""
+}
+
+type RenameFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RenameFileResponse) Reset() {
+	*x = RenameFileResponse{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RenameFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RenameFileResponse) ProtoMessage() {}
+
+func (x *RenameFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RenameFileResponse.ProtoReflect.Descriptor instead.
+func (*RenameFileResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{19}
+}
+
+type StatFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatFileRequest) Reset() {
+	*x = StatFileRequest{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[20]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatFileRequest) ProtoMessage() {}
+
+func (x *StatFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[20]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatFileRequest.ProtoReflect.Descriptor instead.
+func (*StatFileRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{20}
+}
+
+func (x *StatFileRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+type StatFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	FileId        string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	SizeBytes     int64                  `protobuf:"varint,3,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"`
+	Mode          uint32                 `protobuf:"varint,4,opt,name=mode,proto3" json:"mode,omitempty"`
+	IsDir         bool                   `protobuf:"varint,5,opt,name=is_dir,json=isDir,proto3" json:"is_dir,omitempty"`
+	MtimeUnix     int64                  `protobuf:"varint,6,opt,name=mtime_unix,json=mtimeUnix,proto3" json:"mtime_unix,omitempty"`
+	CtimeUnix     int64                  `protobuf:"varint,7,opt,name=ctime_unix,json=ctimeUnix,proto3" json:"ctime_unix,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *StatFileResponse) Reset() {
+	*x = StatFileResponse{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StatFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StatFileResponse) ProtoMessage() {}
+
+func (x *StatFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StatFileResponse.ProtoReflect.Descriptor instead.
+func (*StatFileResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{21}
+}
+
+func (x *StatFileResponse) GetFileId() string {
+	if x != nil {
+		return x.FileId
+	}
+	return ""
+}
+
+func (x *StatFileResponse) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *StatFileResponse) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+func (x *StatFileResponse) GetMode() uint32 {
+	if x != nil {
+		return x.Mode
+	}
+	return 0
+}
+
+func (x *StatFileResponse) GetIsDir() bool {
+	if x != nil {
+		return x.IsDir
+	}
+	return false
+}
+
+func (x *StatFileResponse) GetMtimeUnix() int64 {
+	if x != nil {
+		return x.MtimeUnix
+	}
+	return 0
+}
+
+func (x *StatFileResponse) GetCtimeUnix() int64 {
+	if x != nil {
+		return x.CtimeUnix
+	}
+	return 0
+}
+
+type TruncateFileRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Path          string                 `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
+	SizeBytes     int64                  `protobuf:"varint,2,opt,name=size_bytes,json=sizeBytes,proto3" json:"size_bytes,omitempty"` // 0 = truncate to zero
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TruncateFileRequest) Reset() {
+	*x = TruncateFileRequest{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TruncateFileRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TruncateFileRequest) ProtoMessage() {}
+
+func (x *TruncateFileRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TruncateFileRequest.ProtoReflect.Descriptor instead.
+func (*TruncateFileRequest) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *TruncateFileRequest) GetPath() string {
+	if x != nil {
+		return x.Path
+	}
+	return ""
+}
+
+func (x *TruncateFileRequest) GetSizeBytes() int64 {
+	if x != nil {
+		return x.SizeBytes
+	}
+	return 0
+}
+
+type TruncateFileResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *TruncateFileResponse) Reset() {
+	*x = TruncateFileResponse{}
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *TruncateFileResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*TruncateFileResponse) ProtoMessage() {}
+
+func (x *TruncateFileResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use TruncateFileResponse.ProtoReflect.Descriptor instead.
+func (*TruncateFileResponse) Descriptor() ([]byte, []int) {
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{23}
+}
+
 type AllocateChunkRequest struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	FileId            string                 `protobuf:"bytes,1,opt,name=file_id,json=fileId,proto3" json:"file_id,omitempty"`
 	ChunkIndex        int32                  `protobuf:"varint,2,opt,name=chunk_index,json=chunkIndex,proto3" json:"chunk_index,omitempty"`
-	ReplicationFactor int32                  `protobuf:"varint,3,opt,name=replication_factor,json=replicationFactor,proto3" json:"replication_factor,omitempty"` // default 3 (FR-N-008)
+	ReplicationFactor int32                  `protobuf:"varint,3,opt,name=replication_factor,json=replicationFactor,proto3" json:"replication_factor,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *AllocateChunkRequest) Reset() {
 	*x = AllocateChunkRequest{}
-	mi := &file_api_proto_v1_namenode_proto_msgTypes[14]
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -724,7 +1252,7 @@ func (x *AllocateChunkRequest) String() string {
 func (*AllocateChunkRequest) ProtoMessage() {}
 
 func (x *AllocateChunkRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_namenode_proto_msgTypes[14]
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -737,7 +1265,7 @@ func (x *AllocateChunkRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AllocateChunkRequest.ProtoReflect.Descriptor instead.
 func (*AllocateChunkRequest) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{14}
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *AllocateChunkRequest) GetFileId() string {
@@ -764,14 +1292,14 @@ func (x *AllocateChunkRequest) GetReplicationFactor() int32 {
 type AllocateChunkResponse struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
 	ChunkId           string                 `protobuf:"bytes,1,opt,name=chunk_id,json=chunkId,proto3" json:"chunk_id,omitempty"`
-	DatanodeAddresses []string               `protobuf:"bytes,2,rep,name=datanode_addresses,json=datanodeAddresses,proto3" json:"datanode_addresses,omitempty"` // RF entries for this chunk
+	DatanodeAddresses []string               `protobuf:"bytes,2,rep,name=datanode_addresses,json=datanodeAddresses,proto3" json:"datanode_addresses,omitempty"`
 	unknownFields     protoimpl.UnknownFields
 	sizeCache         protoimpl.SizeCache
 }
 
 func (x *AllocateChunkResponse) Reset() {
 	*x = AllocateChunkResponse{}
-	mi := &file_api_proto_v1_namenode_proto_msgTypes[15]
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -783,7 +1311,7 @@ func (x *AllocateChunkResponse) String() string {
 func (*AllocateChunkResponse) ProtoMessage() {}
 
 func (x *AllocateChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_api_proto_v1_namenode_proto_msgTypes[15]
+	mi := &file_api_proto_v1_namenode_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -796,7 +1324,7 @@ func (x *AllocateChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AllocateChunkResponse.ProtoReflect.Descriptor instead.
 func (*AllocateChunkResponse) Descriptor() ([]byte, []int) {
-	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{15}
+	return file_api_proto_v1_namenode_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *AllocateChunkResponse) GetChunkId() string {
@@ -835,28 +1363,66 @@ const file_api_proto_v1_namenode_proto_rawDesc = "" +
 	"\x16require_reregistration\x18\x02 \x01(\bR\x15requireReregistration\"U\n" +
 	"\rChunkLocation\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12)\n" +
-	"\x10datanode_address\x18\x02 \x01(\tR\x0fdatanodeAddress\"'\n" +
+	"\x10datanode_address\x18\x02 \x01(\tR\x0fdatanodeAddress\";\n" +
 	"\x11CreateFileRequest\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\"-\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04mode\x18\x02 \x01(\rR\x04mode\"-\n" +
 	"\x12CreateFileResponse\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\"'\n" +
 	"\x11DeleteFileRequest\x12\x12\n" +
 	"\x04path\x18\x01 \x01(\tR\x04path\"\x14\n" +
 	"\x12DeleteFileResponse\"'\n" +
 	"\x11LookupFileRequest\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\"i\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"\xbb\x01\n" +
 	"\x12LookupFileResponse\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12:\n" +
-	"\x06chunks\x18\x02 \x03(\v2\".wourifs.namenode.v1.ChunkLocationR\x06chunks\"*\n" +
+	"\x06chunks\x18\x02 \x03(\v2\".wourifs.namenode.v1.ChunkLocationR\x06chunks\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12\x12\n" +
+	"\x04mode\x18\x04 \x01(\rR\x04mode\x12\x1d\n" +
+	"\n" +
+	"mtime_unix\x18\x05 \x01(\x03R\tmtimeUnix\"*\n" +
 	"\x14ListDirectoryRequest\x12\x12\n" +
-	"\x04path\x18\x01 \x01(\tR\x04path\"T\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"\x87\x01\n" +
 	"\bDirEntry\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x15\n" +
 	"\x06is_dir\x18\x02 \x01(\bR\x05isDir\x12\x1d\n" +
 	"\n" +
-	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\"P\n" +
+	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12\x12\n" +
+	"\x04mode\x18\x04 \x01(\rR\x04mode\x12\x1d\n" +
+	"\n" +
+	"mtime_unix\x18\x05 \x01(\x03R\tmtimeUnix\"P\n" +
 	"\x15ListDirectoryResponse\x127\n" +
-	"\aentries\x18\x01 \x03(\v2\x1d.wourifs.namenode.v1.DirEntryR\aentries\"\x7f\n" +
+	"\aentries\x18\x01 \x03(\v2\x1d.wourifs.namenode.v1.DirEntryR\aentries\">\n" +
+	"\x14MakeDirectoryRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x12\n" +
+	"\x04mode\x18\x02 \x01(\rR\x04mode\"\x17\n" +
+	"\x15MakeDirectoryResponse\",\n" +
+	"\x16RemoveDirectoryRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"\x19\n" +
+	"\x17RemoveDirectoryResponse\"I\n" +
+	"\x11RenameFileRequest\x12\x19\n" +
+	"\bold_path\x18\x01 \x01(\tR\aoldPath\x12\x19\n" +
+	"\bnew_path\x18\x02 \x01(\tR\anewPath\"\x14\n" +
+	"\x12RenameFileResponse\"%\n" +
+	"\x0fStatFileRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\"\xc7\x01\n" +
+	"\x10StatFileResponse\x12\x17\n" +
+	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x03 \x01(\x03R\tsizeBytes\x12\x12\n" +
+	"\x04mode\x18\x04 \x01(\rR\x04mode\x12\x15\n" +
+	"\x06is_dir\x18\x05 \x01(\bR\x05isDir\x12\x1d\n" +
+	"\n" +
+	"mtime_unix\x18\x06 \x01(\x03R\tmtimeUnix\x12\x1d\n" +
+	"\n" +
+	"ctime_unix\x18\a \x01(\x03R\tctimeUnix\"H\n" +
+	"\x13TruncateFileRequest\x12\x12\n" +
+	"\x04path\x18\x01 \x01(\tR\x04path\x12\x1d\n" +
+	"\n" +
+	"size_bytes\x18\x02 \x01(\x03R\tsizeBytes\"\x16\n" +
+	"\x14TruncateFileResponse\"\x7f\n" +
 	"\x14AllocateChunkRequest\x12\x17\n" +
 	"\afile_id\x18\x01 \x01(\tR\x06fileId\x12\x1f\n" +
 	"\vchunk_index\x18\x02 \x01(\x05R\n" +
@@ -864,7 +1430,7 @@ const file_api_proto_v1_namenode_proto_rawDesc = "" +
 	"\x12replication_factor\x18\x03 \x01(\x05R\x11replicationFactor\"a\n" +
 	"\x15AllocateChunkResponse\x12\x19\n" +
 	"\bchunk_id\x18\x01 \x01(\tR\achunkId\x12-\n" +
-	"\x12datanode_addresses\x18\x02 \x03(\tR\x11datanodeAddresses2\xcb\x05\n" +
+	"\x12datanode_addresses\x18\x02 \x03(\tR\x11datanodeAddresses2\xbe\t\n" +
 	"\x0fNameNodeService\x12o\n" +
 	"\x10RegisterDataNode\x12,.wourifs.namenode.v1.RegisterDataNodeRequest\x1a-.wourifs.namenode.v1.RegisterDataNodeResponse\x12Z\n" +
 	"\tHeartbeat\x12%.wourifs.namenode.v1.HeartbeatRequest\x1a&.wourifs.namenode.v1.HeartbeatResponse\x12]\n" +
@@ -875,6 +1441,12 @@ const file_api_proto_v1_namenode_proto_rawDesc = "" +
 	"\n" +
 	"LookupFile\x12&.wourifs.namenode.v1.LookupFileRequest\x1a'.wourifs.namenode.v1.LookupFileResponse\x12f\n" +
 	"\rListDirectory\x12).wourifs.namenode.v1.ListDirectoryRequest\x1a*.wourifs.namenode.v1.ListDirectoryResponse\x12f\n" +
+	"\rMakeDirectory\x12).wourifs.namenode.v1.MakeDirectoryRequest\x1a*.wourifs.namenode.v1.MakeDirectoryResponse\x12l\n" +
+	"\x0fRemoveDirectory\x12+.wourifs.namenode.v1.RemoveDirectoryRequest\x1a,.wourifs.namenode.v1.RemoveDirectoryResponse\x12]\n" +
+	"\n" +
+	"RenameFile\x12&.wourifs.namenode.v1.RenameFileRequest\x1a'.wourifs.namenode.v1.RenameFileResponse\x12W\n" +
+	"\bStatFile\x12$.wourifs.namenode.v1.StatFileRequest\x1a%.wourifs.namenode.v1.StatFileResponse\x12c\n" +
+	"\fTruncateFile\x12(.wourifs.namenode.v1.TruncateFileRequest\x1a).wourifs.namenode.v1.TruncateFileResponse\x12f\n" +
 	"\rAllocateChunk\x12).wourifs.namenode.v1.AllocateChunkRequest\x1a*.wourifs.namenode.v1.AllocateChunkResponseB5Z3github.com/MiltonJ23/WouriFS/api/gen/v1/namenode;pbb\x06proto3"
 
 var (
@@ -889,7 +1461,7 @@ func file_api_proto_v1_namenode_proto_rawDescGZIP() []byte {
 	return file_api_proto_v1_namenode_proto_rawDescData
 }
 
-var file_api_proto_v1_namenode_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
+var file_api_proto_v1_namenode_proto_msgTypes = make([]protoimpl.MessageInfo, 26)
 var file_api_proto_v1_namenode_proto_goTypes = []any{
 	(*RegisterDataNodeRequest)(nil),  // 0: wourifs.namenode.v1.RegisterDataNodeRequest
 	(*RegisterDataNodeResponse)(nil), // 1: wourifs.namenode.v1.RegisterDataNodeResponse
@@ -905,8 +1477,18 @@ var file_api_proto_v1_namenode_proto_goTypes = []any{
 	(*ListDirectoryRequest)(nil),     // 11: wourifs.namenode.v1.ListDirectoryRequest
 	(*DirEntry)(nil),                 // 12: wourifs.namenode.v1.DirEntry
 	(*ListDirectoryResponse)(nil),    // 13: wourifs.namenode.v1.ListDirectoryResponse
-	(*AllocateChunkRequest)(nil),     // 14: wourifs.namenode.v1.AllocateChunkRequest
-	(*AllocateChunkResponse)(nil),    // 15: wourifs.namenode.v1.AllocateChunkResponse
+	(*MakeDirectoryRequest)(nil),     // 14: wourifs.namenode.v1.MakeDirectoryRequest
+	(*MakeDirectoryResponse)(nil),    // 15: wourifs.namenode.v1.MakeDirectoryResponse
+	(*RemoveDirectoryRequest)(nil),   // 16: wourifs.namenode.v1.RemoveDirectoryRequest
+	(*RemoveDirectoryResponse)(nil),  // 17: wourifs.namenode.v1.RemoveDirectoryResponse
+	(*RenameFileRequest)(nil),        // 18: wourifs.namenode.v1.RenameFileRequest
+	(*RenameFileResponse)(nil),       // 19: wourifs.namenode.v1.RenameFileResponse
+	(*StatFileRequest)(nil),          // 20: wourifs.namenode.v1.StatFileRequest
+	(*StatFileResponse)(nil),         // 21: wourifs.namenode.v1.StatFileResponse
+	(*TruncateFileRequest)(nil),      // 22: wourifs.namenode.v1.TruncateFileRequest
+	(*TruncateFileResponse)(nil),     // 23: wourifs.namenode.v1.TruncateFileResponse
+	(*AllocateChunkRequest)(nil),     // 24: wourifs.namenode.v1.AllocateChunkRequest
+	(*AllocateChunkResponse)(nil),    // 25: wourifs.namenode.v1.AllocateChunkResponse
 }
 var file_api_proto_v1_namenode_proto_depIdxs = []int32{
 	4,  // 0: wourifs.namenode.v1.LookupFileResponse.chunks:type_name -> wourifs.namenode.v1.ChunkLocation
@@ -917,16 +1499,26 @@ var file_api_proto_v1_namenode_proto_depIdxs = []int32{
 	7,  // 5: wourifs.namenode.v1.NameNodeService.DeleteFile:input_type -> wourifs.namenode.v1.DeleteFileRequest
 	9,  // 6: wourifs.namenode.v1.NameNodeService.LookupFile:input_type -> wourifs.namenode.v1.LookupFileRequest
 	11, // 7: wourifs.namenode.v1.NameNodeService.ListDirectory:input_type -> wourifs.namenode.v1.ListDirectoryRequest
-	14, // 8: wourifs.namenode.v1.NameNodeService.AllocateChunk:input_type -> wourifs.namenode.v1.AllocateChunkRequest
-	1,  // 9: wourifs.namenode.v1.NameNodeService.RegisterDataNode:output_type -> wourifs.namenode.v1.RegisterDataNodeResponse
-	3,  // 10: wourifs.namenode.v1.NameNodeService.Heartbeat:output_type -> wourifs.namenode.v1.HeartbeatResponse
-	6,  // 11: wourifs.namenode.v1.NameNodeService.CreateFile:output_type -> wourifs.namenode.v1.CreateFileResponse
-	8,  // 12: wourifs.namenode.v1.NameNodeService.DeleteFile:output_type -> wourifs.namenode.v1.DeleteFileResponse
-	10, // 13: wourifs.namenode.v1.NameNodeService.LookupFile:output_type -> wourifs.namenode.v1.LookupFileResponse
-	13, // 14: wourifs.namenode.v1.NameNodeService.ListDirectory:output_type -> wourifs.namenode.v1.ListDirectoryResponse
-	15, // 15: wourifs.namenode.v1.NameNodeService.AllocateChunk:output_type -> wourifs.namenode.v1.AllocateChunkResponse
-	9,  // [9:16] is the sub-list for method output_type
-	2,  // [2:9] is the sub-list for method input_type
+	14, // 8: wourifs.namenode.v1.NameNodeService.MakeDirectory:input_type -> wourifs.namenode.v1.MakeDirectoryRequest
+	16, // 9: wourifs.namenode.v1.NameNodeService.RemoveDirectory:input_type -> wourifs.namenode.v1.RemoveDirectoryRequest
+	18, // 10: wourifs.namenode.v1.NameNodeService.RenameFile:input_type -> wourifs.namenode.v1.RenameFileRequest
+	20, // 11: wourifs.namenode.v1.NameNodeService.StatFile:input_type -> wourifs.namenode.v1.StatFileRequest
+	22, // 12: wourifs.namenode.v1.NameNodeService.TruncateFile:input_type -> wourifs.namenode.v1.TruncateFileRequest
+	24, // 13: wourifs.namenode.v1.NameNodeService.AllocateChunk:input_type -> wourifs.namenode.v1.AllocateChunkRequest
+	1,  // 14: wourifs.namenode.v1.NameNodeService.RegisterDataNode:output_type -> wourifs.namenode.v1.RegisterDataNodeResponse
+	3,  // 15: wourifs.namenode.v1.NameNodeService.Heartbeat:output_type -> wourifs.namenode.v1.HeartbeatResponse
+	6,  // 16: wourifs.namenode.v1.NameNodeService.CreateFile:output_type -> wourifs.namenode.v1.CreateFileResponse
+	8,  // 17: wourifs.namenode.v1.NameNodeService.DeleteFile:output_type -> wourifs.namenode.v1.DeleteFileResponse
+	10, // 18: wourifs.namenode.v1.NameNodeService.LookupFile:output_type -> wourifs.namenode.v1.LookupFileResponse
+	13, // 19: wourifs.namenode.v1.NameNodeService.ListDirectory:output_type -> wourifs.namenode.v1.ListDirectoryResponse
+	15, // 20: wourifs.namenode.v1.NameNodeService.MakeDirectory:output_type -> wourifs.namenode.v1.MakeDirectoryResponse
+	17, // 21: wourifs.namenode.v1.NameNodeService.RemoveDirectory:output_type -> wourifs.namenode.v1.RemoveDirectoryResponse
+	19, // 22: wourifs.namenode.v1.NameNodeService.RenameFile:output_type -> wourifs.namenode.v1.RenameFileResponse
+	21, // 23: wourifs.namenode.v1.NameNodeService.StatFile:output_type -> wourifs.namenode.v1.StatFileResponse
+	23, // 24: wourifs.namenode.v1.NameNodeService.TruncateFile:output_type -> wourifs.namenode.v1.TruncateFileResponse
+	25, // 25: wourifs.namenode.v1.NameNodeService.AllocateChunk:output_type -> wourifs.namenode.v1.AllocateChunkResponse
+	14, // [14:26] is the sub-list for method output_type
+	2,  // [2:14] is the sub-list for method input_type
 	2,  // [2:2] is the sub-list for extension type_name
 	2,  // [2:2] is the sub-list for extension extendee
 	0,  // [0:2] is the sub-list for field type_name
@@ -943,7 +1535,7 @@ func file_api_proto_v1_namenode_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_api_proto_v1_namenode_proto_rawDesc), len(file_api_proto_v1_namenode_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   16,
+			NumMessages:   26,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

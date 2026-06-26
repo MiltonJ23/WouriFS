@@ -16,6 +16,19 @@ service DataNodeService {
 
   // Accept a replicated chunk from a peer Datanode (FR-D-004)
   rpc ReplicateChunk(stream ReplicateChunkRequest) returns (ReplicateChunkResponse);
+
+  // Status returns health and capacity info (observability endpoint)
+  rpc Status(StatusRequest) returns (StatusResponse);
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+  int64 total_bytes = 1;
+  int64 free_bytes = 2;
+  int64 used_bytes = 3;
+  int32 chunk_count = 4;
+  int32 active_connections = 5;
 }
 
 message WriteChunkRequest {

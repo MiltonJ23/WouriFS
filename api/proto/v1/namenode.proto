@@ -9,17 +9,22 @@ service NameNodeService {
   rpc RegisterDataNode(RegisterDataNodeRequest) returns (RegisterDataNodeResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
 
-  // File operations (FR-N-004)
+  // File & directory operations
   rpc CreateFile(CreateFileRequest) returns (CreateFileResponse);
   rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
   rpc LookupFile(LookupFileRequest) returns (LookupFileResponse);
   rpc ListDirectory(ListDirectoryRequest) returns (ListDirectoryResponse);
+  rpc MakeDirectory(MakeDirectoryRequest) returns (MakeDirectoryResponse);
+  rpc RemoveDirectory(RemoveDirectoryRequest) returns (RemoveDirectoryResponse);
+  rpc RenameFile(RenameFileRequest) returns (RenameFileResponse);
+  rpc StatFile(StatFileRequest) returns (StatFileResponse);
+  rpc TruncateFile(TruncateFileRequest) returns (TruncateFileResponse);
 
-  // Chunk allocation (FR-N-004, FR-N-008)
+  // Chunk allocation
   rpc AllocateChunk(AllocateChunkRequest) returns (AllocateChunkResponse);
 }
 
-// --- DataNode lifecycle messages (unchanged) ---
+// --- DataNode lifecycle messages ---
 
 message RegisterDataNodeRequest {
   string datanode_id = 1;
@@ -41,7 +46,7 @@ message HeartbeatResponse {
   bool require_reregistration = 2;
 }
 
-// --- File operation messages (FR-N-004) ---
+// --- File operation messages ---
 
 message ChunkLocation {
   string chunk_id = 1;
@@ -49,11 +54,12 @@ message ChunkLocation {
 }
 
 message CreateFileRequest {
-  string path = 1;   // full path within namespace, e.g. "/ledgers/2026/q1.csv"
+  string path = 1;
+  uint32 mode = 2; // POSIX permission bits (default 0644)
 }
 
 message CreateFileResponse {
-  string file_id = 1; // UUID assigned by Namenode
+  string file_id = 1;
 }
 
 message DeleteFileRequest {
@@ -68,32 +74,78 @@ message LookupFileRequest {
 
 message LookupFileResponse {
   string file_id = 1;
-  repeated ChunkLocation chunks = 2; // ordered list of chunks with locations
+  repeated ChunkLocation chunks = 2;
+  int64 size_bytes = 3;
+  uint32 mode = 4;
+  int64 mtime_unix = 5;
 }
 
 message ListDirectoryRequest {
-  string path = 1; // directory path, empty means namespace root
+  string path = 1;
 }
 
 message DirEntry {
   string name = 1;
   bool is_dir = 2;
   int64 size_bytes = 3;
+  uint32 mode = 4;
+  int64 mtime_unix = 5;
 }
 
 message ListDirectoryResponse {
   repeated DirEntry entries = 1;
 }
 
-// --- Chunk allocation (FR-N-006, FR-N-008) ---
+message MakeDirectoryRequest {
+  string path = 1;
+  uint32 mode = 2; // default 0755
+}
+
+message MakeDirectoryResponse {}
+
+message RemoveDirectoryRequest {
+  string path = 1;
+}
+
+message RemoveDirectoryResponse {}
+
+message RenameFileRequest {
+  string old_path = 1;
+  string new_path = 2;
+}
+
+message RenameFileResponse {}
+
+message StatFileRequest {
+  string path = 1;
+}
+
+message StatFileResponse {
+  string file_id = 1;
+  string name = 2;
+  int64 size_bytes = 3;
+  uint32 mode = 4;
+  bool is_dir = 5;
+  int64 mtime_unix = 6;
+  int64 ctime_unix = 7;
+}
+
+message TruncateFileRequest {
+  string path = 1;
+  int64 size_bytes = 2; // 0 = truncate to zero
+}
+
+message TruncateFileResponse {}
+
+// --- Chunk allocation ---
 
 message AllocateChunkRequest {
   string file_id = 1;
   int32 chunk_index = 2;
-  int32 replication_factor = 3; // default 3 (FR-N-008)
+  int32 replication_factor = 3;
 }
 
 message AllocateChunkResponse {
   string chunk_id = 1;
-  repeated string datanode_addresses = 2; // RF entries for this chunk
+  repeated string datanode_addresses = 2;
 }
