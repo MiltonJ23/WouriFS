@@ -1,0 +1,48 @@
+{
+  "title": "WouriFS — Microfinance Storage Observability",
+  "uid": "wourifs",
+  "panels": [
+    {
+      "title": "Operations / sec",
+      "type": "graph",
+      "targets": [
+        {"expr": "rate(wourifs_op_total[1m])", "legendFormat": "{{op}} {{status}}"}
+      ]
+    },
+    {
+      "title": "Operation Latency (p99)",
+      "type": "graph",
+      "targets": [
+        {"expr": "histogram_quantile(0.99, rate(wourifs_op_duration_seconds_bucket[1m]))", "legendFormat": "{{op}}"}
+      ]
+    },
+    {
+      "title": "Bytes Transferred / sec",
+      "type": "graph",
+      "targets": [
+        {"expr": "rate(wourifs_op_bytes_total[1m])", "legendFormat": "{{op}}"}
+      ]
+    },
+    {
+      "title": "Error Rate",
+      "type": "graph",
+      "targets": [
+        {"expr": "rate(wourifs_ops_errors[1m])", "legendFormat": "{{op}}"}
+      ]
+    },
+    {
+      "title": "Active Datanodes",
+      "type": "stat",
+      "targets": [
+        {"expr": "wourifs_datanodes_available"}
+      ]
+    },
+    {
+      "title": "Chunk Storage Usage",
+      "type": "gauge",
+      "targets": [
+        {"expr": "wourifs_chunk_bytes_used / wourifs_chunk_bytes_total * 100", "legendFormat": "usage %"}
+      ]
+    }
+  ]
+}
