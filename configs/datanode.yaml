@@ -1,0 +1,15 @@
+# WouriFS Datanode configuration (Sprint 1)
+
+addr: "0.0.0.0:9001"            # gRPC listen address
+data_dir: "./data/datanode"     # chunk storage directory
+node_id: ""                     # auto-generated if empty
+
+namenode_addr: "127.0.0.1:9000" # Namenode to register with
+heartbeat_frequency: "5s"       # FR-D-003: heartbeat interval
+total_capacity_bytes: 10737418240  # 10 GiB
+
+# TLS (optional; if omitted, runs without mTLS for development)
+tls:
+  cert_path: "./certs/datanode.crt"
+  key_path: "./certs/datanode.key"
+  ca_cert_path: "./certs/ca.crt"

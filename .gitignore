@@ -20,3 +20,6 @@ data/
 *.log
 *.crt
 *.key
+WORKFLOW.md
+coverage.out
+coverage.html
