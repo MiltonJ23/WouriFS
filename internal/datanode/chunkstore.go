@@ -78,6 +78,21 @@ func (c *ChunkStore) Exists(chunkID string) bool {
 	return err == nil
 }
 
+// ChunkCount returns the number of chunks stored.
+func (c *ChunkStore) ChunkCount() int {
+	entries, err := os.ReadDir(c.dataDir)
+	if err != nil {
+		return 0
+	}
+	count := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			count++
+		}
+	}
+	return count
+}
+
 // TotalSize returns the sum of all chunk file sizes (for capacity reporting).
 func (c *ChunkStore) TotalSize() int64 {
 	entries, err := os.ReadDir(c.dataDir)

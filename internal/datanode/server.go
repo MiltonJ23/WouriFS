@@ -22,6 +22,17 @@ func NewServer(store *ChunkStore) *Server {
 	return &Server{store: store}
 }
 
+// Status returns storage capacity and health info for observability.
+func (s *Server) Status(ctx context.Context, req *datanodepb.StatusRequest) (*datanodepb.StatusResponse, error) {
+	total := s.store.TotalSize()
+	return &datanodepb.StatusResponse{
+		TotalBytes: 1 << 30, // configurable in production
+		UsedBytes:  total,
+		FreeBytes:  (1 << 30) - total,
+		ChunkCount: int32(s.store.ChunkCount()),
+	}, nil
+}
+
 // WriteChunk receives a client-side stream of 1MB blocks and persists the chunk (FR-D-002, FR-D-006).
 func (s *Server) WriteChunk(stream datanodepb.DataNodeService_WriteChunkServer) error {
 	var buf bytes.Buffer
