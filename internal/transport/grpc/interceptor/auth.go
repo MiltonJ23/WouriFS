@@ -97,3 +97,10 @@ func PayloadFromContext(ctx context.Context) (*domain.TokenPayload, error) {
 func (w *WrappedServerStream) Context() context.Context {
 	return w.ctx
 }
+
+// SetPayloadInContext injects a token payload into a context for testing.
+// Exported so that business-logic handlers tested outside this package can be
+// provided with a properly-keyed payload without bypassing auth enforcement.
+func SetPayloadInContext(ctx context.Context, payload *domain.TokenPayload) context.Context {
+	return context.WithValue(ctx, payloadContextKey, payload)
+}
