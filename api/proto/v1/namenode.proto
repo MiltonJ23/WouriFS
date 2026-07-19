@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package wourifs.namenode.v1;
+package namenode.v1;
 
 option go_package = "github.com/MiltonJ23/WouriFS/api/gen/v1/namenode;pb";
 

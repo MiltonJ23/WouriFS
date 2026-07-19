@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package wourifs.provision.v1;
+package provision.v1;
 
 option go_package = "github.com/MiltonJ23/WouriFS/api/gen/v1/provision;provisionpb";
 
