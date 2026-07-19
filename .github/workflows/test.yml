@@ -1,0 +1,45 @@
+name: Test
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        go-version: ['1.21', '1.22']
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: deps
+        run: go mod download
+
+      - name: vet
+        run: go vet ./internal/... ./pkg/... ./cmd/fuse/...
+
+      - name: test
+        run: go test ./internal/... ./pkg/... -count=1 -timeout 120s
+
+      - name: race
+        run: go test ./internal/... -race -count=1 -timeout 180s
+
+      - name: coverage
+        run: go test ./internal/... ./pkg/... -coverprofile=coverage.out -covermode=atomic
+
+      - name: coverage-threshold
+        run: |
+          threshold=80.0
+          coverage=$(go tool cover -func=coverage.out | grep total | awk '{print $3}' | sed 's/%//')
+          if (( $(echo "$coverage < $threshold" | bc -l) )); then
+            echo "Coverage $coverage% below threshold $threshold%"
+            exit 1
+          fi
+          echo "Coverage $coverage% >= $threshold% OK"
