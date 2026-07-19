@@ -16,7 +16,7 @@ import (
 func TestDataNodeServer_Status(t *testing.T) {
 	dir := t.TempDir()
 	store, _ := NewChunkStore(dir)
-	srv := NewServer(store)
+	srv := NewServer(store, 1<<30)
 
 	resp, err := srv.Status(context.Background(), &datanodepb.StatusRequest{})
 	if err != nil {
@@ -49,7 +49,7 @@ func TestChunkStore_ChunkCount(t *testing.T) {
 func TestDataNodeServer_DeleteChunk_NotFound(t *testing.T) {
 	dir := t.TempDir()
 	store, _ := NewChunkStore(dir)
-	srv := NewServer(store)
+	srv := NewServer(store, 1<<30)
 
 	_, err := srv.DeleteChunk(context.Background(), &datanodepb.DeleteChunkRequest{
 		ChunkId: "does-not-exist",

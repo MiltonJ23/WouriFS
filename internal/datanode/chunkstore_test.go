@@ -128,7 +128,7 @@ func startTestDatanode(t *testing.T, dir string) (*grpc.ClientConn, datanodepb.D
 	}
 
 	srv := grpc.NewServer()
-	datanodepb.RegisterDataNodeServiceServer(srv, NewServer(store))
+	datanodepb.RegisterDataNodeServiceServer(srv, NewServer(store, 1<<30))
 
 	go srv.Serve(lis)
 

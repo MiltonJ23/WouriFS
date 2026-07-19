@@ -97,7 +97,7 @@ func TestNameNodeServer_RemoveDirectory(t *testing.T) {
 	ctx := testContext()
 
 	t.Run("rmdir succeeds on empty dir", func(t *testing.T) {
-		srv.store.MakeDir("/wourifs/test/emptydir")
+		srv.store.MakeDir("/wourifs/test/emptydir", 0755)
 		_, err := srv.RemoveDirectory(ctx, &pb.RemoveDirectoryRequest{
 			Path: "/wourifs/test/emptydir",
 		})
@@ -110,7 +110,7 @@ func TestNameNodeServer_RemoveDirectory(t *testing.T) {
 	})
 
 	t.Run("rmdir on non-empty dir returns Internal error", func(t *testing.T) {
-		srv.store.MakeDir("/wourifs/test/parent")
+		srv.store.MakeDir("/wourifs/test/parent", 0755)
 		srv.store.CreateFile("/wourifs/test/parent/child.txt", 0644)
 		_, err := srv.RemoveDirectory(ctx, &pb.RemoveDirectoryRequest{
 			Path: "/wourifs/test/parent",
@@ -241,7 +241,7 @@ func TestNameNodeServer_StatFile(t *testing.T) {
 	})
 
 	t.Run("stat existing directory", func(t *testing.T) {
-		srv.store.MakeDir("/wourifs/test/mydir")
+		srv.store.MakeDir("/wourifs/test/mydir", 0755)
 		resp, err := srv.StatFile(ctx, &pb.StatFileRequest{
 			Path: "/wourifs/test/mydir",
 		})
@@ -353,7 +353,7 @@ func TestNameNodeServer_ListDirectory_EdgeCases(t *testing.T) {
 	ctx := testContext()
 
 	// Setup: dirs and files
-	srv.store.MakeDir("/wourifs/test/subdir")
+	srv.store.MakeDir("/wourifs/test/subdir", 0755)
 	srv.store.CreateFile("/wourifs/test/a.txt", 0644)
 	srv.store.CreateFile("/wourifs/test/b.txt", 0644)
 

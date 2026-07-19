@@ -49,7 +49,7 @@ func TestNameNodeServer_CoverageGaps(t *testing.T) {
 	})
 
 	t.Run("DeleteFile on directory returns Internal", func(t *testing.T) {
-		srv.store.MakeDir("/wourifs/test/adir")
+		srv.store.MakeDir("/wourifs/test/adir", 0755)
 		_, err := srv.DeleteFile(ctx, &pb.DeleteFileRequest{Path: "/wourifs/test/adir"})
 		if status.Code(err) != codes.Internal {
 			t.Errorf("expected Internal, got %v", err)
@@ -123,7 +123,7 @@ func TestNameNodeServer_CoverageGaps(t *testing.T) {
 	})
 
 	t.Run("RenameFile directory", func(t *testing.T) {
-		srv.store.MakeDir("/wourifs/test/dir_src")
+		srv.store.MakeDir("/wourifs/test/dir_src", 0755)
 		_, err := srv.RenameFile(ctx, &pb.RenameFileRequest{
 			OldPath: "/wourifs/test/dir_src", NewPath: "/wourifs/test/dir_dst",
 		})
@@ -236,7 +236,7 @@ func TestRaftFSM_ApplySnapshotRestore(t *testing.T) {
 	t.Run("Restore from snapshot", func(t *testing.T) {
 		// Build a snapshot from a clean store
 		cleanStore := NewMetadataStore(3)
-		cleanStore.MakeDir("/restore/dir")
+		cleanStore.MakeDir("/restore/dir", 0755)
 		cleanStore.CreateFile("/restore/file.txt", 0644)
 
 		snap, _ := (&RaftFSM{store: cleanStore}).Snapshot()
