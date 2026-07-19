@@ -99,8 +99,8 @@ func TestNameNodeServer_CoverageGaps(t *testing.T) {
 		_, err := srv.AllocateChunk(ctx, &pb.AllocateChunkRequest{
 			FileId: "ghost-id", ChunkIndex: 0, ReplicationFactor: 1,
 		})
-		if status.Code(err) != codes.Internal {
-			t.Errorf("expected Internal, got %v", err)
+		if status.Code(err) != codes.NotFound {
+			t.Errorf("expected NotFound, got %v", err)
 		}
 	})
 

@@ -11,6 +11,7 @@ import (
 	pb "github.com/MiltonJ23/WouriFS/api/gen/v1/namenode"
 	"github.com/MiltonJ23/WouriFS/internal/domain"
 	domainnn "github.com/MiltonJ23/WouriFS/internal/domain/namenode"
+	interceptor "github.com/MiltonJ23/WouriFS/internal/transport/grpc/interceptor"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
@@ -126,17 +127,16 @@ func TestNameNodeServer_BDD(t *testing.T) {
 	t.Run("Given chunk allocation (FR-N-006, FR-N-008)", func(t *testing.T) {
 		store := NewMetadataStore(3)
 		reg := domainnn.NewInMemoryDataNodeRegistry()
-		walPath := filepath.Join(t.TempDir(), "wal.jsonl")
-		client, cleanup := startTestNamenode(t, store, reg, walPath)
-		defer cleanup()
+		srv := NewNameNodeServer(store, reg, nil, nil)
+		ctx := interceptor.SetPayloadInContext(context.Background(), &domain.TokenPayload{
+			UserID: "test-user", Namespace: "/wourifs/test",
+		})
 
 		// Register 4 datanodes
 		for i := 0; i < 4; i++ {
-			client.RegisterDataNode(context.Background(), &pb.RegisterDataNodeRequest{
-				DatanodeId:        "dn-" + string(rune('a'+i)),
-				Address:           "100.64.0." + string(rune('2'+i)) + ":9001",
-				TotalStorageBytes: 1 << 30,
-				FreeStorageBytes:  1 << 30,
+			reg.Register(&domainnn.DataNodeStatus{
+				ID: "dn-" + string(rune('a'+i)), Address: "100.64.0." + string(rune('2'+i)) + ":9001",
+				IsAvailable: true, TotalStorageBytes: 1 << 30, FreeStorageBytes: 1 << 30,
 			})
 		}
 
@@ -144,7 +144,7 @@ func TestNameNodeServer_BDD(t *testing.T) {
 		fm, _ := store.CreateFile("/wourifs/test/chunked.csv", 0644)
 
 		t.Run("When allocating a chunk with RF=3", func(t *testing.T) {
-			resp, err := client.AllocateChunk(context.Background(), &pb.AllocateChunkRequest{
+			resp, err := srv.AllocateChunk(ctx, &pb.AllocateChunkRequest{
 				FileId:             fm.FileID,
 				ChunkIndex:         0,
 				ReplicationFactor:  3,
@@ -169,7 +169,7 @@ func TestNameNodeServer_BDD(t *testing.T) {
 				}
 			}
 
-			_, err := client.AllocateChunk(context.Background(), &pb.AllocateChunkRequest{
+			_, err := srv.AllocateChunk(ctx, &pb.AllocateChunkRequest{
 				FileId:            fm.FileID,
 				ChunkIndex:        1,
 				ReplicationFactor: 3,
