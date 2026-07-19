@@ -85,7 +85,7 @@ func main() {
 	log.Printf("datanode %s listening on %s", id, *addr)
 
 	// Background: register + heartbeat loop
-	ctx, cancel := contextWithShutdown()
+	ctx, cancel := contextWithShutdown(grpcSrv)
 	defer cancel()
 
 	go heartbeatLoop(ctx, id, *addr, *nnAddr, *hbFreq, *totalCap)
@@ -163,13 +163,14 @@ func sendHeartbeat(nnAddr, nodeID string) error {
 	return nil
 }
 
-func contextWithShutdown() (context.Context, context.CancelFunc) {
+func contextWithShutdown(srv *grpc.Server) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
 		<-sigCh
 		log.Println("shutting down...")
+		srv.GracefulStop()
 		cancel()
 	}()
 	return ctx, cancel
