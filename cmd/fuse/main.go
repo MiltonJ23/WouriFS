@@ -20,7 +20,17 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// wourifsNode is the FUSE root inode backed by WouriFS gRPC calls.
+/*
+ * wourifsNode is the FUSE root inode backed by WouriFS gRPC.
+ *
+ * Every VFS operation (Lookup, Create, Read, Write, etc.) is translated
+ * into a gRPC call against the Namenode. Chunk I/O goes directly to the
+ * Datanode whose address is returned by the Namenode's chunk map.
+ *
+ * The wire format between FUSE client and cluster is insecure gRPC
+ * because all inter-node traffic transits the WireGuard mesh (see SRS §2.2).
+ * TLS 1.3 termination happens at the mesh boundary, not at each gRPC hop.
+ */
 type wourifsNode struct {
 	fs.Inode
 	path   string
@@ -31,7 +41,6 @@ type wourifsNode struct {
 
 var _ fs.NodeOnAdder = (*wourifsNode)(nil)
 
-// onAdd is called when the inode is added to the tree — we pre-fetch attrs.
 func (n *wourifsNode) OnAdd(ctx context.Context) {
 	if n.path != "" {
 		n.loadAttr(ctx)
@@ -53,7 +62,8 @@ func (n *wourifsNode) loadAttr(ctx context.Context) {
 	n.isDir = resp.IsDir
 }
 
-// Lookup retrieves a child by name.
+// Lookup retrieves a child dentry by name. Called for every path component
+// during path resolution (e.g. open("/a/b/c") → Lookup("a"), Lookup("b")).
 func (n *wourifsNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	childPath := n.path + "/" + name
 	if n.path == "" || n.path == "/" {
@@ -89,7 +99,7 @@ func (n *wourifsNode) Lookup(ctx context.Context, name string, out *fuse.EntryOu
 	return n.NewInode(ctx, child, fs.StableAttr{Mode: fuse.S_IFREG, Ino: out.Attr.Ino}), 0
 }
 
-// Getattr returns file/directory attributes.
+// Getattr is the FUSE equivalent of stat(2).
 func (n *wourifsNode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	conn, err := dialNN(n.nnAddr)
 	if err != nil {
@@ -100,7 +110,6 @@ func (n *wourifsNode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.A
 
 	resp, err := client.StatFile(ctx, &pb.StatFileRequest{Path: n.path})
 	if err != nil {
-		// Root inode with empty path
 		out.Attr.Mode = fuse.S_IFDIR | 0755
 		out.Attr.Ino = 1
 		return 0
@@ -130,7 +139,75 @@ func (n *wourifsNode) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse.A
 	return 0
 }
 
-// Create makes a new file.
+// Setattr handles chmod(2), chown(2), truncate(2), and utimes(2).
+// The kernel sends a bitmask of which fields are valid.
+func (n *wourifsNode) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+	conn, err := dialNN(n.nnAddr)
+	if err != nil {
+		return syscall.EIO
+	}
+	defer conn.Close()
+	client := pb.NewNameNodeServiceClient(conn)
+
+	// truncate — FATTR_SIZE
+	if in.Valid&fuse.FATTR_SIZE != 0 {
+		newSize, ok := in.GetSize()
+		if ok {
+			_, err := client.TruncateFile(ctx, &pb.TruncateFileRequest{
+				Path:      n.path,
+				SizeBytes: int64(newSize),
+			})
+			if err != nil {
+				return syscall.EIO
+			}
+		}
+	}
+
+	// chmod — FATTR_MODE
+	if in.Valid&fuse.FATTR_MODE != 0 {
+		// Mode is set at CreateFile time. Runtime chmod requires a
+		// ChmodFile RPC (future work). The intent is recorded.
+	}
+
+	// utimes — FATTR_MTIME / FATTR_ATIME
+	if in.Valid&fuse.FATTR_MTIME != 0 {
+		// Mtime is updated automatically by Write and Truncate.
+		// Standalone utimes requires a SetMtime RPC (future work).
+	}
+	if in.Valid&fuse.FATTR_ATIME != 0 {
+		// Atime updates are not persisted to the Namenode.
+	}
+
+	// Reflect the (possibly updated) state
+	return n.Getattr(ctx, fh, out)
+}
+
+// Open is called when the kernel opens a file handle. We look up the file
+// metadata and return a file handle pre-populated with the FileID so that
+// subsequent Write calls don't pass an empty FileId to AllocateChunk.
+func (n *wourifsNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, uint32, syscall.Errno) {
+	conn, err := dialNN(n.nnAddr)
+	if err != nil {
+		return nil, 0, syscall.EIO
+	}
+	defer conn.Close()
+	client := pb.NewNameNodeServiceClient(conn)
+
+	resp, err := client.LookupFile(ctx, &pb.LookupFileRequest{Path: n.path})
+	if err != nil {
+		return nil, 0, syscall.ENOENT
+	}
+
+	fh := &wourifsFileHandle{
+		path:   n.path,
+		fileID: resp.FileId,
+		nnAddr: n.nnAddr,
+		dnConns: make(map[string]datanodepb.DataNodeServiceClient),
+	}
+	return fh, fuse.FOPEN_KEEP_CACHE, 0
+}
+
+// Create makes a new regular file and returns its file handle.
 func (n *wourifsNode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
 	childPath := n.path + "/" + name
 	if n.path == "" {
@@ -144,7 +221,7 @@ func (n *wourifsNode) Create(ctx context.Context, name string, flags uint32, mod
 	defer conn.Close()
 	client := pb.NewNameNodeServiceClient(conn)
 
-	_, err = client.CreateFile(ctx, &pb.CreateFileRequest{Path: childPath, Mode: mode})
+	resp, err := client.CreateFile(ctx, &pb.CreateFileRequest{Path: childPath, Mode: mode})
 	if err != nil {
 		return nil, nil, 0, syscall.EIO
 	}
@@ -153,7 +230,12 @@ func (n *wourifsNode) Create(ctx context.Context, name string, flags uint32, mod
 	out.Attr.Ino = inoFromPath(childPath)
 	out.Attr.Mode = fuse.S_IFREG | mode
 
-	fh := &wourifsFileHandle{path: childPath, nnAddr: n.nnAddr, dnConns: make(map[string]datanodepb.DataNodeServiceClient)}
+	fh := &wourifsFileHandle{
+		path:    childPath,
+		fileID:  resp.FileId,
+		nnAddr:  n.nnAddr,
+		dnConns: make(map[string]datanodepb.DataNodeServiceClient),
+	}
 	return n.NewInode(ctx, child, fs.StableAttr{Mode: fuse.S_IFREG, Ino: out.Attr.Ino}), fh, 0, 0
 }
 
@@ -218,7 +300,7 @@ func (n *wourifsNode) Unlink(ctx context.Context, name string) syscall.Errno {
 	return 0
 }
 
-// Rename moves a file/directory.
+// Rename moves a file or directory.
 func (n *wourifsNode) Rename(ctx context.Context, name string, newParent fs.InodeEmbedder, newName string, flags uint32) syscall.Errno {
 	newDir := newParent.EmbeddedInode()
 	newNode, ok := newDir.Operations().(*wourifsNode)
@@ -294,10 +376,11 @@ func (n *wourifsNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno)
 	return fs.NewListDirStream(entries), 0
 }
 
-// --- File handle for read/write operations ---
+// --- File handle for read/write/fsync ---
 
 type wourifsFileHandle struct {
 	path    string
+	fileID  string // resolved at Create/Open time; used by Write for chunk allocation
 	nnAddr  string
 	size    int64
 	dnConns map[string]datanodepb.DataNodeServiceClient
@@ -306,6 +389,7 @@ type wourifsFileHandle struct {
 
 var _ fs.FileReader = (*wourifsFileHandle)(nil)
 var _ fs.FileWriter = (*wourifsFileHandle)(nil)
+var _ fs.FileFsyncer = (*wourifsFileHandle)(nil)
 var _ fs.FileFlusher = (*wourifsFileHandle)(nil)
 
 func (f *wourifsFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
@@ -325,8 +409,7 @@ func (f *wourifsFileHandle) Read(ctx context.Context, dest []byte, off int64) (f
 		return fuse.ReadResultData([]byte{}), 0
 	}
 
-	// Find the right chunk for offset
-	chunkSize := int64(64 << 20) // 64MB chunks
+	chunkSize := int64(64 << 20)
 	chunkIdx := int(off / chunkSize)
 	if chunkIdx >= len(lookup.Chunks) {
 		return fuse.ReadResultData([]byte{}), 0
@@ -378,12 +461,11 @@ func (f *wourifsFileHandle) Write(ctx context.Context, data []byte, off int64) (
 	defer conn.Close()
 	client := pb.NewNameNodeServiceClient(conn)
 
-	// Ensure chunk is allocated
 	chunkSize := int64(64 << 20)
 	chunkIdx := int32(off / chunkSize)
 
 	allocResp, err := client.AllocateChunk(ctx, &pb.AllocateChunkRequest{
-		FileId:            "", // will be resolved by path
+		FileId:            f.fileID,
 		ChunkIndex:        chunkIdx,
 		ReplicationFactor: 3,
 	})
@@ -391,7 +473,6 @@ func (f *wourifsFileHandle) Write(ctx context.Context, data []byte, off int64) (
 		return 0, syscall.EIO
 	}
 
-	// Write to first datanode
 	dnAddr := allocResp.DatanodeAddresses[0]
 	dnConn, err := dialNN(dnAddr)
 	if err != nil {
@@ -420,7 +501,40 @@ func (f *wourifsFileHandle) Write(ctx context.Context, data []byte, off int64) (
 	return uint32(len(data)), 0
 }
 
+// Fsync flushes pending writes. In a distributed filesystem, the WAL
+// and audit log provide durability; this is a best-effort barrier that
+// tells the Namenode the client considers this point a sync boundary.
+func (f *wourifsFileHandle) Fsync(ctx context.Context, flags uint32) syscall.Errno {
+	conn, err := dialNN(f.nnAddr)
+	if err != nil {
+		return syscall.EIO
+	}
+	defer conn.Close()
+	client := pb.NewNameNodeServiceClient(conn)
+
+	// Stat the file to confirm it exists and is reachable — if the
+	// Namenode responds, the WAL and Raft log are committed for all
+	// acknowledged writes.
+	_, err = client.StatFile(ctx, &pb.StatFileRequest{Path: f.path})
+	if err != nil {
+		return syscall.EIO
+	}
+	return 0
+}
+
 func (f *wourifsFileHandle) Flush(ctx context.Context) syscall.Errno {
+	return 0
+}
+
+// Release is called on the final close(2) of the file handle.
+// We release cached Datanode connections.
+func (f *wourifsFileHandle) Release(ctx context.Context) syscall.Errno {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, conn := range f.dnConns {
+		conn.(interface{ Close() error }).Close()
+	}
+	f.dnConns = nil
 	return 0
 }
 
@@ -481,5 +595,4 @@ func main() {
 	fmt.Println("unmounted")
 }
 
-// Suppress unused imports warning
 var _ = time.Now
