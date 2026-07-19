@@ -19,6 +19,7 @@ package watchd
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 )
@@ -107,7 +108,9 @@ func (w *Watchd) Process(ctx context.Context, entry AuditEntry) []Alert {
 			// Dispatch fire-and-forget; dispatch failures are logged
 			// but do not block processing of subsequent entries.
 			for _, disp := range w.dispatchers {
-				disp(ctx, *alert)
+				if err := disp(ctx, *alert); err != nil {
+					log.Printf("watchd: dispatch %s failed: %v", alert.Type, err)
+				}
 			}
 		}
 	}
