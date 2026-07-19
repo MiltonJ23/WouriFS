@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -13,7 +15,8 @@ import (
 	provisionpb "github.com/MiltonJ23/WouriFS/api/gen/v1/provision"
 	"github.com/MiltonJ23/WouriFS/internal/shamir"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 )
 
 func main() {
@@ -31,6 +34,8 @@ func main() {
 	combineInst := combineCmd.String("institution", "", "institution ID for COBAC request")
 	combineNode := combineCmd.String("node", "", "node ID being provisioned")
 	combineOut := combineCmd.String("out", "", "output directory for generated credentials")
+	combineJWT := combineCmd.String("jwt", "", "JWT token for share-service authentication")
+	combineTLSCA := combineCmd.String("tls-ca", "", "CA cert for share-service TLS (required)")
 
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "usage: wouri-provision <split|combine>\n")
@@ -43,7 +48,7 @@ func main() {
 		handleSplit(splitSecret, *splitK, *splitN, *splitOut)
 	case "combine":
 		combineCmd.Parse(os.Args[2:])
-		handleCombine(combineShareA, combineShareB, combineUsb, combineCobac, combineInst, combineNode, combineOut)
+		handleCombine(combineShareA, combineShareB, combineUsb, combineCobac, combineInst, combineNode, combineOut, combineJWT, combineTLSCA)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n", os.Args[1])
 		os.Exit(1)
@@ -76,7 +81,7 @@ func handleSplit(secretHex *string, k, n int, outDir string) {
 	}
 }
 
-func handleCombine(shareA, shareB, usb, cobacAddr, institution, node, outDir *string) {
+func handleCombine(shareA, shareB, usb, cobacAddr, institution, node, outDir, jwtToken, tlsCA *string) {
 	var s1, s2 [2]*big.Int
 	loaded := 0
 
@@ -106,7 +111,7 @@ func handleCombine(shareA, shareB, usb, cobacAddr, institution, node, outDir *st
 
 	// Load share from COBAC over network
 	if loaded < 2 && *institution != "" {
-		shareBytes, err := fetchFromCOBAC(*cobacAddr, *institution, *node)
+		shareBytes, err := fetchFromCOBAC(*cobacAddr, *institution, *node, *jwtToken, *tlsCA)
 		if err != nil {
 			log.Fatalf("cobac fetch: %v", err)
 		}
@@ -154,8 +159,26 @@ func parseShareFile(data []byte) [2]*big.Int {
 	return [2]*big.Int{x, y}
 }
 
-func fetchFromCOBAC(addr, institution, node string) ([]byte, error) {
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+func fetchFromCOBAC(addr, institution, node, jwtToken, tlsCAPath string) ([]byte, error) {
+	if tlsCAPath == "" {
+		return nil, fmt.Errorf("TLS CA certificate required (--tls-ca)")
+	}
+
+	caBytes, err := os.ReadFile(tlsCAPath)
+	if err != nil {
+		return nil, fmt.Errorf("read CA cert: %w", err)
+	}
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(caBytes) {
+		return nil, fmt.Errorf("invalid CA certificate")
+	}
+
+	tlsCfg := &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		RootCAs:    caPool,
+	}
+
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
 	if err != nil {
 		return nil, fmt.Errorf("dial cobac: %w", err)
 	}
@@ -164,6 +187,10 @@ func fetchFromCOBAC(addr, institution, node string) ([]byte, error) {
 	client := provisionpb.NewShareServiceClient(conn)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	if jwtToken != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+jwtToken)
+	}
 
 	resp, err := client.GetShare(ctx, &provisionpb.GetShareRequest{
 		InstitutionId: institution,

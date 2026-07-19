@@ -28,13 +28,23 @@ func main() {
 	caCertPath := flag.String("tls-ca", "", "CA certificate for mTLS")
 	jwtPriv := flag.String("jwt-priv", "", "RSA private key for JWT verification")
 	jwtPub := flag.String("jwt-pub", "", "RSA public key for JWT verification")
+	devInsecure := flag.Bool("dev-insecure", false, "disable TLS and JWT requirements (DEVELOPMENT ONLY)")
 	flag.Parse()
+
+	if !*devInsecure {
+		if *tlsCertPath == "" || *tlsKeyPath == "" {
+			log.Fatal("TLS certificate and key required (use --dev-insecure to disable)")
+		}
+		if *jwtPriv == "" || *jwtPub == "" {
+			log.Fatal("JWT RSA keys required (use --dev-insecure to disable)")
+		}
+	}
 
 	db := provision.NewDB()
 	if err := db.LoadInstitutions(*instFile); err != nil {
 		log.Fatalf("load institutions: %v", err)
 	}
-	log.Printf("loaded %d institutions", len(*instFile)) // approximate
+	log.Printf("loaded institutions from %s", *instFile)
 
 	// TLS config with mTLS
 	var tlsCfg *tls.Config
