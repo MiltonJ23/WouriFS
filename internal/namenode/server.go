@@ -330,6 +330,24 @@ func (s *NameNodeServer) TruncateFile(ctx context.Context, req *pb.TruncateFileR
 
 func (s *NameNodeServer) AllocateChunk(ctx context.Context, req *pb.AllocateChunkRequest) (*pb.AllocateChunkResponse, error) {
 	start, _ := s.log.OpStart("AllocateChunk", req.FileId)
+	payload, err := s.auth(ctx)
+	if err != nil {
+		s.log.OpEnd(start, "AllocateChunk", req.FileId, err, 0)
+		return nil, err
+	}
+
+	// Resolve file path from FileID so we can enforce namespace isolation.
+	// The caller's JWT must authorize writes to the owning path.
+	fm, err := s.store.GetFileByID(req.FileId)
+	if err != nil {
+		s.log.OpEnd(start, "AllocateChunk", req.FileId, err, 0)
+		return nil, status.Error(codes.NotFound, "file not found")
+	}
+	if err := s.store.CheckNamespace(payload, fm.Path); err != nil {
+		s.log.OpEnd(start, "AllocateChunk", req.FileId, err, 0)
+		return nil, status.Error(codes.PermissionDenied, err.Error())
+	}
+
 	rf := req.ReplicationFactor
 	if rf <= 0 {
 		rf = s.store.ReplicationFactor()

@@ -56,14 +56,20 @@ func NewMetadataStore(replicationFactor int32) *MetadataStore {
 }
 
 // CheckNamespace verifies the user can access the given path (FR-N-007).
+// The check requires the path to exactly equal the namespace or be a child
+// separated by a path delimiter. A bare prefix match is insufficient:
+// namespace "/wourifs/a" must not grant access to "/wourifs/ab".
 func (m *MetadataStore) CheckNamespace(payload *domain.TokenPayload, path string) error {
 	if payload == nil || payload.Namespace == "" {
 		return ErrNamespaceDenied
 	}
-	if !hasPrefix(path, payload.Namespace) {
-		return ErrNamespaceDenied
+	if path == payload.Namespace {
+		return nil
 	}
-	return nil
+	if hasPrefix(path, payload.Namespace) && len(path) > len(payload.Namespace) && path[len(payload.Namespace)] == '/' {
+		return nil
+	}
+	return ErrNamespaceDenied
 }
 
 // PutFile inserts a file record directly (WAL replay).
@@ -156,6 +162,20 @@ func (m *MetadataStore) GetFile(path string) (*FileMeta, error) {
 		return nil, ErrFileNotFound
 	}
 	return fm, nil
+}
+
+// GetFileByID retrieves file metadata by its FileID.
+// Used by AllocateChunk to resolve the owning path for namespace checks.
+func (m *MetadataStore) GetFileByID(fileID string) (*FileMeta, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, fm := range m.files {
+		if fm.FileID == fileID {
+			return fm, nil
+		}
+	}
+	return nil, ErrFileNotFound
 }
 
 // DeleteFile removes a file entry.
