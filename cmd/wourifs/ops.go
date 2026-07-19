@@ -2,7 +2,12 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/spf13/cobra"
 )
 
@@ -53,7 +58,7 @@ Usage:
 }
 
 func mountCmd() *cobra.Command {
-	var mountPoint string
+	var nnAddr string
 
 	cmd := &cobra.Command{
 		Use:   "mount [mountpoint]",
@@ -68,19 +73,49 @@ Usage:
   wourifs mount /mnt/wourifs`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			mountPoint = args[0]
+			mountPoint := args[0]
 			cfg, err := LoadConfig(configPath)
 			if err != nil {
 				return err
 			}
-			// TODO: wire into cmd/fuse logic using cfg
-			fmt.Printf("[fuse] mounting at %s (namenode: localhost:%d)\n",
-				mountPoint, cfg.Network.NamenodePort)
-			fmt.Println("[fuse] NOT YET WIRED — use cmd/fuse directly")
-			select {} // block until unmount
+
+			addr := fmt.Sprintf("127.0.0.1:%d", cfg.Network.NamenodePort)
+			if len(cfg.Network.NamenodePeers) > 0 {
+				addr = cfg.Network.NamenodePeers[0]
+			}
+			if nnAddr != "" {
+				addr = nnAddr
+			}
+
+			if err := os.MkdirAll(mountPoint, 0755); err != nil {
+				return err
+			}
+
+			root := &wourifsNode{path: "", isDir: true, nnAddr: addr}
+			server, err := fs.Mount(mountPoint, root, &fs.Options{
+				MountOptions: fuse.MountOptions{Debug: false, Name: "wourifs", FsName: "wourifs", AllowOther: true},
+			})
+			if err != nil {
+				return fmt.Errorf("mount: %w", err)
+			}
+
+			fmt.Printf("WouriFS mounted at %s (namenode %s)\n", mountPoint, addr)
+
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			go func() {
+				<-sigCh
+				fmt.Println("\nunmounting...")
+				server.Unmount()
+			}()
+
+			server.Wait()
+			fmt.Println("unmounted")
+			return nil
 		},
 	}
 
+	cmd.Flags().StringVarP(&nnAddr, "namenode", "n", "", "override Namenode address (host:port)")
 	return cmd
 }
 
