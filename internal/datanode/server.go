@@ -14,22 +14,27 @@ import (
 // Server implements datanodepb.DataNodeServiceServer (FR-D-002).
 type Server struct {
 	datanodepb.UnimplementedDataNodeServiceServer
-	store *ChunkStore
+	store    *ChunkStore
+	capacity int64 // configured total storage bytes
 }
 
 // NewServer creates a DataNode gRPC handler.
-func NewServer(store *ChunkStore) *Server {
-	return &Server{store: store}
+func NewServer(store *ChunkStore, capacity int64) *Server {
+	return &Server{store: store, capacity: capacity}
 }
 
 // Status returns storage capacity and health info for observability.
 func (s *Server) Status(ctx context.Context, req *datanodepb.StatusRequest) (*datanodepb.StatusResponse, error) {
 	total := s.store.TotalSize()
+	chunkCount := s.store.ChunkCount()
+	if chunkCount > int64(^uint32(0)>>1) {
+		chunkCount = int64(^uint32(0) >> 1) // clamp to max int32
+	}
 	return &datanodepb.StatusResponse{
-		TotalBytes: 1 << 30, // configurable in production
+		TotalBytes: s.capacity,
 		UsedBytes:  total,
-		FreeBytes:  (1 << 30) - total,
-		ChunkCount: int32(s.store.ChunkCount()),
+		FreeBytes:  s.capacity - total,
+		ChunkCount: int32(chunkCount),
 	}, nil
 }
 

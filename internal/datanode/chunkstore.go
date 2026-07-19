@@ -109,12 +109,12 @@ func (c *ChunkStore) Exists(chunkID string) bool {
 }
 
 // ChunkCount returns the number of chunks stored.
-func (c *ChunkStore) ChunkCount() int {
+func (c *ChunkStore) ChunkCount() int64 {
 	entries, err := os.ReadDir(c.dataDir)
 	if err != nil {
 		return 0
 	}
-	count := 0
+	var count int64
 	for _, e := range entries {
 		if !e.IsDir() {
 			count++

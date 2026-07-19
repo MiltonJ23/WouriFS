@@ -74,7 +74,7 @@ func main() {
 		grpcSrv = grpc.NewServer()
 	}
 
-	dnSrv := datanode.NewServer(store)
+	dnSrv := datanode.NewServer(store, *totalCap)
 	datanodepb.RegisterDataNodeServiceServer(grpcSrv, dnSrv)
 
 	// Listen

@@ -43,7 +43,7 @@ func main() {
 	}
 
 	srv := grpc.NewServer()
-	datanodepb.RegisterDataNodeServiceServer(srv, datanode.NewServer(store))
+	datanodepb.RegisterDataNodeServiceServer(srv, datanode.NewServer(store, 1<<30))
 	go srv.Serve(lis)
 	defer srv.GracefulStop()
 
