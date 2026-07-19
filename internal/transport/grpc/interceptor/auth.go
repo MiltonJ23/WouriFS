@@ -98,6 +98,20 @@ func (w *WrappedServerStream) Context() context.Context {
 	return w.ctx
 }
 
+// DevNoAuthInterceptor returns a gRPC interceptor that injects a default
+// payload for development and testing. Every request gets the same identity.
+// NEVER use in production — this bypasses all namespace isolation.
+func DevNoAuthInterceptor() grpc.UnaryServerInterceptor {
+	payload := &domain.TokenPayload{
+		UserID:    "dev-user",
+		Username:  "developer",
+		Namespace: "/",
+	}
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		return handler(context.WithValue(ctx, payloadContextKey, payload), req)
+	}
+}
+
 // SetPayloadInContext injects a token payload into a context for testing.
 // Exported so that business-logic handlers tested outside this package can be
 // provided with a properly-keyed payload without bypassing auth enforcement.

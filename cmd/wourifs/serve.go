@@ -18,6 +18,7 @@ import (
 	domain "github.com/MiltonJ23/WouriFS/internal/domain/namenode"
 	nn "github.com/MiltonJ23/WouriFS/internal/namenode"
 	"github.com/MiltonJ23/WouriFS/internal/observability"
+	interceptor "github.com/MiltonJ23/WouriFS/internal/transport/grpc/interceptor"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -48,61 +49,67 @@ Example:
 // --- namenode ---
 
 func serveNamenodeCmd() *cobra.Command {
-	return &cobra.Command{
+	var devNoAuth bool
+
+	cmd := &cobra.Command{
 		Use:   "namenode",
 		Short: "Start a Namenode metadata server",
-		RunE:  runNamenode,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := LoadConfig(configPath)
+			if err != nil {
+				return err
+			}
+			if !cfg.HasRole("namenode") {
+				return fmt.Errorf("node %q missing role 'namenode'", cfg.Node.ID)
+			}
+
+			nnDir := cfg.Store.DataDir + "/namenode"
+			if err := os.MkdirAll(nnDir, 0750); err != nil {
+				return err
+			}
+
+			walPath := nnDir + "/wal.jsonl"
+			w, err := nn.OpenWAL(walPath)
+			if err != nil {
+				return fmt.Errorf("wal: %w", err)
+			}
+			defer w.Close()
+
+			store := nn.NewMetadataStore(cfg.Cluster.ReplicationFactor)
+			if err := nn.Replay(walPath, store); err != nil {
+				return fmt.Errorf("replay: %w", err)
+			}
+
+			reg := domain.NewInMemoryDataNodeRegistry()
+			hm, _ := domain.NewHealthMonitor(reg, domain.DefaultClock, 5*time.Second, 15*time.Second)
+
+			grpcOpts := []grpc.ServerOption{}
+			if devNoAuth {
+				grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(interceptor.DevNoAuthInterceptor()))
+				log.Printf("[namenode] WARNING: running without auth (--dev-no-auth)")
+			}
+			grpcSrv := grpc.NewServer(grpcOpts...)
+			nnLogger := observability.NewLogger(slog.LevelInfo)
+			nnSrv := nn.NewNameNodeServer(store, reg, w, nnLogger)
+			pb.RegisterNameNodeServiceServer(grpcSrv, nnSrv)
+
+			ctx, cancel := shutdownCtx(grpcSrv)
+			defer cancel()
+			hm.Start(ctx)
+			defer hm.Stop()
+
+			addr := fmt.Sprintf("0.0.0.0:%d", cfg.Network.NamenodePort)
+			lis, err := net.Listen("tcp", addr)
+			if err != nil {
+				return fmt.Errorf("listen %s: %w", addr, err)
+			}
+			log.Printf("[namenode] %s listening on %s (rf=%d)", cfg.Node.ID, addr, cfg.Cluster.ReplicationFactor)
+
+			return grpcSrv.Serve(lis)
+		},
 	}
-}
-
-func runNamenode(cmd *cobra.Command, args []string) error {
-	cfg, err := LoadConfig(configPath)
-	if err != nil {
-		return err
-	}
-	if !cfg.HasRole("namenode") {
-		return fmt.Errorf("node %q missing role 'namenode'", cfg.Node.ID)
-	}
-
-	nnDir := cfg.Store.DataDir + "/namenode"
-	if err := os.MkdirAll(nnDir, 0750); err != nil {
-		return err
-	}
-
-	// WAL
-	walPath := nnDir + "/wal.jsonl"
-	w, err := nn.OpenWAL(walPath)
-	if err != nil {
-		return fmt.Errorf("wal: %w", err)
-	}
-	defer w.Close()
-
-	store := nn.NewMetadataStore(cfg.Cluster.ReplicationFactor)
-	if err := nn.Replay(walPath, store); err != nil {
-		return fmt.Errorf("replay: %w", err)
-	}
-
-	reg := domain.NewInMemoryDataNodeRegistry()
-	hm, _ := domain.NewHealthMonitor(reg, domain.DefaultClock, 5*time.Second, 15*time.Second)
-
-	grpcSrv := grpc.NewServer()
-	nnLogger := observability.NewLogger(slog.LevelInfo)
-	nnSrv := nn.NewNameNodeServer(store, reg, w, nnLogger)
-	pb.RegisterNameNodeServiceServer(grpcSrv, nnSrv)
-
-	ctx, cancel := shutdownCtx(grpcSrv)
-	defer cancel()
-	hm.Start(ctx)
-	defer hm.Stop()
-
-	addr := fmt.Sprintf("0.0.0.0:%d", cfg.Network.NamenodePort)
-	lis, err := net.Listen("tcp", addr)
-	if err != nil {
-		return fmt.Errorf("listen %s: %w", addr, err)
-	}
-	log.Printf("[namenode] %s listening on %s (rf=%d)", cfg.Node.ID, addr, cfg.Cluster.ReplicationFactor)
-
-	return grpcSrv.Serve(lis)
+	cmd.Flags().BoolVar(&devNoAuth, "dev-no-auth", false, "disable JWT authentication (DEVELOPMENT ONLY)")
+	return cmd
 }
 
 // --- datanode ---
