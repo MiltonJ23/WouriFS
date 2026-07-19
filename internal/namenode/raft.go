@@ -47,21 +47,34 @@ func (f *RaftFSM) Apply(logEntry *raft.Log) interface{} {
 
 	switch e.Op {
 	case "create_file":
-		f.store.PutFile(&FileMeta{FileID: e.FileID, Path: e.Path, Mode: 0644})
+		mode := e.Mode
+		if mode == 0 {
+			mode = 0644
+		}
+		f.store.PutFile(&FileMeta{FileID: e.FileID, Path: e.Path, Mode: mode})
 	case "delete_file":
-		f.store.DeleteFile(e.Path)
+		if err := f.store.DeleteFile(e.Path); err != nil {
+			log.Printf("raft fsm: delete %s: %v", e.Path, err)
+		}
 	case "add_chunk":
-		f.store.AddChunk(e.FileID, e.ChunkID, e.Replicas)
+		if err := f.store.AddChunk(e.FileID, e.ChunkID, e.Replicas); err != nil {
+			log.Printf("raft fsm: addchunk %s: %v", e.ChunkID, err)
+		}
 	case "mkdir":
-		f.store.MakeDir(e.Path)
+		if err := f.store.MakeDir(e.Path, 0755); err != nil {
+			log.Printf("raft fsm: mkdir %s: %v", e.Path, err)
+		}
 	case "rmdir":
-		f.store.RemoveDir(e.Path)
+		if err := f.store.RemoveDir(e.Path); err != nil {
+			log.Printf("raft fsm: rmdir %s: %v", e.Path, err)
+		}
 	case "rename":
-		f.store.Rename(e.OldPath, e.NewPath)
+		if err := f.store.Rename(e.OldPath, e.NewPath); err != nil {
+			log.Printf("raft fsm: rename %s: %v", e.OldPath, err)
+		}
 	case "truncate_file":
-		if fm, err := f.store.GetFile(e.Path); err == nil {
-			fm.Size = e.Size
-			fm.Mtime = time.Now()
+		if err := f.store.TruncateFile(e.Path, e.Size); err != nil {
+			log.Printf("raft fsm: truncate %s: %v", e.Path, err)
 		}
 	}
 	return nil
@@ -180,6 +193,3 @@ func BootstrapRaft(cfg RaftConfig, store *MetadataStore) (*raft.Raft, *RaftFSM, 
 
 	return r, fsm, nil
 }
-
-// Ensure import usage
-var _ = fmt.Sprintf

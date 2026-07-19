@@ -87,7 +87,7 @@ func (s *NameNodeServer) CreateFile(ctx context.Context, req *pb.CreateFileReque
 		return nil, status.Errorf(codes.Internal, "create: %v", err)
 	}
 
-	s.walAppend(WALEntry{Op: "create_file", Path: req.Path, FileID: fm.FileID, Size: 0})
+	s.walAppend(WALEntry{Op: "create_file", Path: req.Path, FileID: fm.FileID, Mode: fm.Mode, Size: 0})
 	s.log.OpEnd(start, "CreateFile", req.Path, nil, 0)
 	return &pb.CreateFileResponse{FileId: fm.FileID}, nil
 }
@@ -197,7 +197,7 @@ func (s *NameNodeServer) MakeDirectory(ctx context.Context, req *pb.MakeDirector
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
-	if err := s.store.MakeDir(req.Path); err != nil {
+	if err := s.store.MakeDir(req.Path, req.Mode); err != nil {
 		s.log.OpEnd(start, "MakeDirectory", req.Path, err, 0)
 		if err == ErrFileExists {
 			return nil, status.Error(codes.AlreadyExists, err.Error())
@@ -313,13 +313,10 @@ func (s *NameNodeServer) TruncateFile(ctx context.Context, req *pb.TruncateFileR
 		return nil, status.Error(codes.PermissionDenied, err.Error())
 	}
 
-	fm, err := s.store.GetFile(req.Path)
-	if err != nil {
+	if err := s.store.TruncateFile(req.Path, req.SizeBytes); err != nil {
 		s.log.OpEnd(start, "TruncateFile", req.Path, err, 0)
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
-	fm.Size = req.SizeBytes
-	fm.Mtime = time.Now()
 
 	s.walAppend(WALEntry{Op: "truncate_file", Path: req.Path, Size: req.SizeBytes})
 	s.log.OpEnd(start, "TruncateFile", req.Path, nil, req.SizeBytes)
