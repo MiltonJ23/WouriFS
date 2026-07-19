@@ -78,6 +78,15 @@ func TestChunkStore_BDD(t *testing.T) {
 				t.Error("expected error for non-existent chunk")
 			}
 		})
+
+		t.Run("When using path traversal chunk ID", func(t *testing.T) {
+			for _, id := range []string{"../etc/passwd", "foo/bar", "a\\b", ""} {
+				_, err := store.Write(id, bytes.NewReader([]byte("x")))
+				if err == nil {
+					t.Errorf("expected error for chunk ID %q, got nil", id)
+				}
+			}
+		})
 	})
 
 	t.Run("Given multiple chunks", func(t *testing.T) {

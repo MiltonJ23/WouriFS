@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -23,14 +24,33 @@ func NewChunkStore(dataDir string) (*ChunkStore, error) {
 	return &ChunkStore{dataDir: dataDir}, nil
 }
 
-// chunkPath returns the absolute path for a chunk file.
-func (c *ChunkStore) chunkPath(chunkID string) string {
-	return filepath.Join(c.dataDir, chunkID)
+// chunkPath validates chunkID and returns the absolute path under dataDir.
+// Rejects IDs containing directory traversal sequences.
+func (c *ChunkStore) chunkPath(chunkID string) (string, error) {
+	if chunkID == "" {
+		return "", fmt.Errorf("chunkstore: empty chunk ID")
+	}
+	if strings.Contains(chunkID, "..") || strings.Contains(chunkID, "/") || strings.Contains(chunkID, "\\") {
+		return "", fmt.Errorf("chunkstore: invalid chunk ID %q", chunkID)
+	}
+
+	raw := filepath.Join(c.dataDir, chunkID)
+	cleaned := filepath.Clean(raw)
+	prefix := filepath.Clean(c.dataDir) + string(os.PathSeparator)
+
+	if !strings.HasPrefix(cleaned, prefix) && cleaned != filepath.Clean(c.dataDir) {
+		return "", fmt.Errorf("chunkstore: chunk ID escapes data directory")
+	}
+
+	return raw, nil
 }
 
 // Write streams blocks into the chunk file (overwrites if exists).
 func (c *ChunkStore) Write(chunkID string, reader io.Reader) (int64, error) {
-	path := c.chunkPath(chunkID)
+	path, err := c.chunkPath(chunkID)
+	if err != nil {
+		return 0, err
+	}
 	f, err := os.Create(path)
 	if err != nil {
 		return 0, fmt.Errorf("write chunk %s: %w", chunkID, err)
@@ -39,7 +59,7 @@ func (c *ChunkStore) Write(chunkID string, reader io.Reader) (int64, error) {
 
 	n, err := io.Copy(f, reader)
 	if err != nil {
-		os.Remove(path) // cleanup partial write
+		os.Remove(path)
 		return 0, fmt.Errorf("write chunk %s: %w", chunkID, err)
 	}
 	return n, nil
@@ -47,7 +67,10 @@ func (c *ChunkStore) Write(chunkID string, reader io.Reader) (int64, error) {
 
 // Read opens the chunk file for reading.
 func (c *ChunkStore) Read(chunkID string) (io.ReadCloser, int64, error) {
-	path := c.chunkPath(chunkID)
+	path, err := c.chunkPath(chunkID)
+	if err != nil {
+		return nil, 0, err
+	}
 	fi, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -64,8 +87,11 @@ func (c *ChunkStore) Read(chunkID string) (io.ReadCloser, int64, error) {
 
 // Delete removes a chunk from disk.
 func (c *ChunkStore) Delete(chunkID string) error {
-	path := c.chunkPath(chunkID)
-	err := os.Remove(path)
+	path, err := c.chunkPath(chunkID)
+	if err != nil {
+		return err
+	}
+	err = os.Remove(path)
 	if os.IsNotExist(err) {
 		return fmt.Errorf("chunk %s: %w", chunkID, os.ErrNotExist)
 	}
@@ -74,7 +100,11 @@ func (c *ChunkStore) Delete(chunkID string) error {
 
 // Exists reports whether a chunk file is present.
 func (c *ChunkStore) Exists(chunkID string) bool {
-	_, err := os.Stat(c.chunkPath(chunkID))
+	path, err := c.chunkPath(chunkID)
+	if err != nil {
+		return false
+	}
+	_, err = os.Stat(path)
 	return err == nil
 }
 
