@@ -85,6 +85,22 @@ type TracingConfig struct {
 	SampleRate float64 `yaml:"sample_rate"`    // 0.0 - 1.0
 }
 
+// Validate checks configuration invariants and returns the first error found.
+func (c Config) Validate() error {
+	if c.Cluster.WriteQuorum > c.Cluster.ReplicationFactor {
+		return fmt.Errorf("write_quorum (%d) must not exceed replication_factor (%d)",
+			c.Cluster.WriteQuorum, c.Cluster.ReplicationFactor)
+	}
+	for _, r := range c.Node.Roles {
+		switch r {
+		case "namenode", "datanode", "gateway":
+		default:
+			return fmt.Errorf("unknown role %q (allowed: namenode, datanode, gateway)", r)
+		}
+	}
+	return nil
+}
+
 // DefaultConfig returns a reasonable baseline. Callers override via YAML.
 func DefaultConfig() Config {
 	return Config{

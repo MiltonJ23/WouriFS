@@ -62,7 +62,21 @@ choose [datanode] only. The same config file can be copied to all nodes
 			defaultData := filepath.Join("/var/lib/wourifs", cfg.Node.ID)
 			cfg.Store.DataDir = prompt("Data directory", defaultData)
 
-			// Network mode
+			if err := os.MkdirAll(cfg.Store.DataDir, 0755); err != nil {
+				return fmt.Errorf("create data dir: %w", err)
+			}
+
+			// Validate roles before writing config
+			if len(cfg.Node.Roles) == 0 {
+				return fmt.Errorf("at least one role is required (namenode, datanode, gateway)")
+			}
+			for _, r := range cfg.Node.Roles {
+				switch r {
+				case "namenode", "datanode", "gateway":
+				default:
+					return fmt.Errorf("unknown role %q (allowed: namenode, datanode, gateway)", r)
+				}
+			}
 			cfg.Network.Mode = prompt("Network mode (lan or tailscale)", cfg.Network.Mode)
 			if cfg.Network.Mode == "tailscale" {
 				cfg.Network.HeadscaleServer = prompt("Headscale server address", "headscale.lan:443")
@@ -86,8 +100,6 @@ choose [datanode] only. The same config file can be copied to all nodes
 				return fmt.Errorf("create config dir: %w", err)
 			}
 
-			os.MkdirAll(cfg.Store.DataDir, 0755)
-
 			if err := os.WriteFile(configPath, data, 0640); err != nil {
 				return fmt.Errorf("write config: %w", err)
 			}
@@ -107,6 +119,7 @@ func prompt(label, def string) string {
 	fmt.Printf("%s [%s]: ", label, def)
 	var input string
 	fmt.Scanln(&input)
+	input = strings.TrimSpace(input)
 	if input == "" {
 		return def
 	}
