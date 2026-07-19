@@ -100,8 +100,8 @@ func (m *MetadataStore) CreateFile(path string, mode uint32) (*FileMeta, error) 
 	return fm, nil
 }
 
-// MakeDir creates a directory marker entry.
-func (m *MetadataStore) MakeDir(path string) error {
+// MakeDir creates a directory marker entry with the requested mode.
+func (m *MetadataStore) MakeDir(path string, mode uint32) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -109,10 +109,14 @@ func (m *MetadataStore) MakeDir(path string) error {
 		return ErrFileExists
 	}
 
+	if mode == 0 {
+		mode = 0755
+	}
+
 	now := time.Now()
 	m.files[path] = &FileMeta{
 		Path:  path,
-		Mode:  0755,
+		Mode:  mode,
 		IsDir: true,
 		Mtime: now,
 		Ctime: now,
@@ -194,7 +198,8 @@ func (m *MetadataStore) DeleteFile(path string) error {
 	return nil
 }
 
-// Rename atomically moves a path from old to new.
+// Rename atomically moves a path from old to new, rewriting child paths
+// when the source is a directory with descendants.
 func (m *MetadataStore) Rename(oldPath, newPath string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -205,6 +210,18 @@ func (m *MetadataStore) Rename(oldPath, newPath string) error {
 	}
 	if _, exists := m.files[newPath]; exists {
 		return ErrFileExists
+	}
+
+	if fm.IsDir {
+		prefix := oldPath + "/"
+		for p, child := range m.files {
+			if hasPrefix(p, prefix) {
+				newChildPath := newPath + "/" + p[len(prefix):]
+				child.Path = newChildPath
+				delete(m.files, p)
+				m.files[newChildPath] = child
+			}
+		}
 	}
 
 	fm.Path = newPath
@@ -227,10 +244,14 @@ func (m *MetadataStore) ListDirectory(dirPath string) []DirEntry {
 			continue
 		}
 		rest := p[len(dirPath):]
-		if rest[0] != '/' {
-			continue
+		// Root dirPath == "/" means rest is e.g. "foo" (no leading slash).
+		// Non-root dirPath means rest starts with "/" (e.g. "/wourifs/test" → "/foo").
+		if dirPath != "/" {
+			if rest[0] != '/' {
+				continue
+			}
+			rest = rest[1:]
 		}
-		rest = rest[1:]
 		idx := 0
 		for idx < len(rest) && rest[idx] != '/' {
 			idx++
@@ -293,6 +314,21 @@ func (m *MetadataStore) AddChunk(fileID string, chunkID string, replicas []strin
 // ReplicationFactor returns the store's default replication factor.
 func (m *MetadataStore) ReplicationFactor() int32 {
 	return m.replFac
+}
+
+// TruncateFile atomically updates the size of a file. Must be called under
+// write lock to avoid racing with concurrent GetFile callers.
+func (m *MetadataStore) TruncateFile(path string, size int64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	fm, ok := m.files[path]
+	if !ok {
+		return ErrFileNotFound
+	}
+	fm.Size = size
+	fm.Mtime = time.Now()
+	return nil
 }
 
 // Snapshot returns a copy of all metadata.
