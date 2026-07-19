@@ -278,23 +278,15 @@ func (s *NameNodeServer) StatFile(ctx context.Context, req *pb.StatFileRequest) 
 
 	fm, err := s.store.GetFile(req.Path)
 	if err != nil {
-		// Check if it's a directory marker
-		if s.store.IsDir(req.Path) {
-			s.log.OpEnd(start, "StatFile", req.Path, nil, 0)
-			return &pb.StatFileResponse{
-				Name:       req.Path,
-				IsDir:      true,
-				Mode:       0755,
-				MtimeUnix:  time.Now().Unix(),
-				CtimeUnix:  time.Now().Unix(),
-			}, nil
-		}
 		s.log.OpEnd(start, "StatFile", req.Path, err, 0)
 		return nil, status.Error(codes.NotFound, err.Error())
 	}
 
 	s.log.OpEnd(start, "StatFile", req.Path, nil, fm.Size)
 	mode := fm.Mode
+	if mode == 0 && fm.IsDir {
+		mode = 0755
+	}
 	if mode == 0 {
 		mode = 0644
 	}
@@ -303,7 +295,7 @@ func (s *NameNodeServer) StatFile(ctx context.Context, req *pb.StatFileRequest) 
 		Name:       fm.Path,
 		SizeBytes:  fm.Size,
 		Mode:       mode,
-		IsDir:      false,
+		IsDir:      fm.IsDir,
 		MtimeUnix:  fm.Mtime.Unix(),
 		CtimeUnix:  fm.Ctime.Unix(),
 	}, nil
