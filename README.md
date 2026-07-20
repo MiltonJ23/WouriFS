@@ -32,24 +32,24 @@ WouriFS operates at the filesystem layer. Every branch workstation mounts a shar
 ```mermaid
 graph TB
     subgraph Branch["Branch Agencies"]
-        A["PC Agence A<br/>wourifs serve datanode<br/>quota: 80 GB"]
-        B["PC Agence B<br/>wourifs serve datanode<br/>quota: 50 GB"]
+        A["PC Agence A<br/>datanode<br/>quota 80 GB"]
+        B["PC Agence B<br/>datanode<br/>quota 50 GB"]
     end
 
     subgraph HQ["Head Office"]
-        C["PC Siège 1<br/>wourifs serve namenode<br/>wourifs serve datanode<br/>quota: 100 GB"]
-        D["PC Siège 2<br/>wourifs serve datanode<br/>wourifs serve gateway<br/>quota: 80 GB"]
+        C["PC Siège 1<br/>namenode + datanode<br/>quota 100 GB"]
+        D["PC Siège 2<br/>datanode + gateway<br/>quota 80 GB"]
     end
 
-    A <==>"WireGuard mesh"==> C
-    B <==>"WireGuard mesh"==> C
-    D <==>"WireGuard mesh"==> C
+    A ---|WireGuard mesh| C
+    B ---|WireGuard mesh| C
+    D ---|WireGuard mesh| C
 
-    E["Branch Employee<br/>Excel / Word / accounting software<br/>Opens Z:\\clients\\ → normal folder"]
-    F["Head Office Admin<br/>Browser → dashboard :8443<br/>Cluster status, users, audit log"]
+    E["Branch Employee<br/>Excel / accounting software<br/>Opens Z:\\clients\\"]
+    F["Head Office Admin<br/>Browser → dashboard :8443"]
 
-    A -.->|"FUSE mount"| E
-    D -.->|"HTTPS :8443"| F
+    A ---|FUSE mount| E
+    D ---|HTTPS :8443| F
 ```
 
 ### Key Components
