@@ -7,7 +7,7 @@
 
 # WouriFS
 
-**A distributed filesystem that makes every branch workstation part of the same drive — no server room, no IT team, no new software to learn.**
+**An auditable distributed filesystem that blends into existing workflows with minimal friction — every branch shares the same drive, every write leaves a cryptographically verifiable trace.**
 
 ---
 
