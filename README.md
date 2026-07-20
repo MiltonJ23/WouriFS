@@ -7,7 +7,7 @@
 
 # WouriFS
 
-**An auditable distributed filesystem that blends into existing workflows with minimal friction — every branch shares the same drive, every write leaves a cryptographically verifiable trace.**
+**An auditable distributed filesystem that blends into existing workflows with minimal friction — every write leaves a cryptographically verifiable trace.**
 
 ---
 
