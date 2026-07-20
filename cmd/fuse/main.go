@@ -17,8 +17,34 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 )
+
+const rpcTimeout = 10 * time.Second
+
+func mapGRPCErr(err error, fallback syscall.Errno) syscall.Errno {
+	if err == nil {
+		return 0
+	}
+	st, ok := status.FromError(err)
+	if !ok {
+		return fallback
+	}
+	switch st.Code() {
+	case codes.NotFound:
+		return syscall.ENOENT
+	case codes.PermissionDenied:
+		return syscall.EACCES
+	case codes.AlreadyExists:
+		return syscall.EEXIST
+	case codes.Unavailable:
+		return syscall.EAGAIN
+	default:
+		return fallback
+	}
+}
 
 /*
  * wourifsNode is the FUSE root inode backed by WouriFS gRPC.
@@ -40,6 +66,16 @@ type wourifsNode struct {
 }
 
 var _ fs.NodeOnAdder = (*wourifsNode)(nil)
+var _ fs.NodeLookuper = (*wourifsNode)(nil)
+var _ fs.NodeGetattrer = (*wourifsNode)(nil)
+var _ fs.NodeSetattrer = (*wourifsNode)(nil)
+var _ fs.NodeOpener = (*wourifsNode)(nil)
+var _ fs.NodeCreater = (*wourifsNode)(nil)
+var _ fs.NodeMkdirer = (*wourifsNode)(nil)
+var _ fs.NodeRmdirer = (*wourifsNode)(nil)
+var _ fs.NodeUnlinker = (*wourifsNode)(nil)
+var _ fs.NodeRenamer = (*wourifsNode)(nil)
+var _ fs.NodeReaddirer = (*wourifsNode)(nil)
 
 func (n *wourifsNode) OnAdd(ctx context.Context) {
 	if n.path != "" {
@@ -202,7 +238,7 @@ func (n *wourifsNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, ui
 		path:   n.path,
 		fileID: resp.FileId,
 		nnAddr: n.nnAddr,
-		dnConns: make(map[string]datanodepb.DataNodeServiceClient),
+		dnConns: make(map[string]*grpc.ClientConn),
 	}
 	return fh, fuse.FOPEN_KEEP_CACHE, 0
 }
@@ -234,7 +270,7 @@ func (n *wourifsNode) Create(ctx context.Context, name string, flags uint32, mod
 		path:    childPath,
 		fileID:  resp.FileId,
 		nnAddr:  n.nnAddr,
-		dnConns: make(map[string]datanodepb.DataNodeServiceClient),
+		dnConns: make(map[string]*grpc.ClientConn),
 	}
 	return n.NewInode(ctx, child, fs.StableAttr{Mode: fuse.S_IFREG, Ino: out.Attr.Ino}), fh, 0, 0
 }
@@ -383,14 +419,29 @@ type wourifsFileHandle struct {
 	fileID  string // resolved at Create/Open time; used by Write for chunk allocation
 	nnAddr  string
 	size    int64
-	dnConns map[string]datanodepb.DataNodeServiceClient
+	dnConns map[string]*grpc.ClientConn
 	mu      sync.Mutex
+}
+
+func (f *wourifsFileHandle) getDNConn(addr string) (*grpc.ClientConn, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if c, ok := f.dnConns[addr]; ok {
+		return c, nil
+	}
+	c, err := dialNN(addr)
+	if err != nil {
+		return nil, err
+	}
+	f.dnConns[addr] = c
+	return c, nil
 }
 
 var _ fs.FileReader = (*wourifsFileHandle)(nil)
 var _ fs.FileWriter = (*wourifsFileHandle)(nil)
 var _ fs.FileFsyncer = (*wourifsFileHandle)(nil)
 var _ fs.FileFlusher = (*wourifsFileHandle)(nil)
+var _ fs.FileReleaser = (*wourifsFileHandle)(nil)
 
 func (f *wourifsFileHandle) Read(ctx context.Context, dest []byte, off int64) (fuse.ReadResult, syscall.Errno) {
 	conn, err := dialNN(f.nnAddr)
@@ -532,7 +583,7 @@ func (f *wourifsFileHandle) Release(ctx context.Context) syscall.Errno {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, conn := range f.dnConns {
-		conn.(interface{ Close() error }).Close()
+		conn.Close()
 	}
 	f.dnConns = nil
 	return 0
