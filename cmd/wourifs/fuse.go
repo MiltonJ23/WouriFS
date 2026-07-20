@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"sync"
 	"syscall"
@@ -96,10 +95,7 @@ func (n *wourifsNode) OnAdd(ctx context.Context) {
 }
 
 func (n *wourifsNode) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	childPath := n.path + "/" + name
-	if n.path == "" || n.path == "/" {
-		childPath = "/" + name
-	}
+	cp := childPath(n.path, name)
 	conn, err := dialNN(n.nnAddr)
 	if err != nil {
 		return nil, syscall.EIO
@@ -107,15 +103,15 @@ func (n *wourifsNode) Lookup(ctx context.Context, name string, out *fuse.EntryOu
 	defer conn.Close()
 	rctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
-	resp, err := pb.NewNameNodeServiceClient(conn).StatFile(rctx, &pb.StatFileRequest{Path: childPath})
+	resp, err := pb.NewNameNodeServiceClient(conn).StatFile(rctx, &pb.StatFileRequest{Path: cp})
 	if err != nil {
 		return nil, mapGRPCErr(err, syscall.ENOENT)
 	}
 	out.Attr = fuse.Attr{
-		Ino: ino(childPath), Size: uint64(resp.SizeBytes), Mode: resp.Mode,
+		Ino: ino(cp), Size: uint64(resp.SizeBytes), Mode: resp.Mode,
 		Mtime: uint64(resp.MtimeUnix), Ctime: uint64(resp.CtimeUnix),
 	}
-	child := &wourifsNode{path: childPath, isDir: resp.IsDir, nnAddr: n.nnAddr}
+	child := &wourifsNode{path: cp, isDir: resp.IsDir, nnAddr: n.nnAddr}
 	if resp.IsDir {
 		out.Attr.Mode |= fuse.S_IFDIR
 		return n.NewInode(ctx, child, fs.StableAttr{Mode: fuse.S_IFDIR, Ino: out.Attr.Ino}), 0
@@ -197,10 +193,7 @@ func (n *wourifsNode) Open(ctx context.Context, flags uint32) (fs.FileHandle, ui
 }
 
 func (n *wourifsNode) Create(ctx context.Context, name string, flags uint32, mode uint32, out *fuse.EntryOut) (*fs.Inode, fs.FileHandle, uint32, syscall.Errno) {
-	childPath := n.path + "/" + name
-	if n.path == "" {
-		childPath = "/" + name
-	}
+	cp := childPath(n.path, name)
 	conn, err := dialNN(n.nnAddr)
 	if err != nil {
 		return nil, nil, 0, syscall.EIO
@@ -208,15 +201,15 @@ func (n *wourifsNode) Create(ctx context.Context, name string, flags uint32, mod
 	defer conn.Close()
 	rctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
-	resp, err := pb.NewNameNodeServiceClient(conn).CreateFile(rctx, &pb.CreateFileRequest{Path: childPath, Mode: mode})
+	resp, err := pb.NewNameNodeServiceClient(conn).CreateFile(rctx, &pb.CreateFileRequest{Path: cp, Mode: mode})
 	if err != nil {
 		return nil, nil, 0, mapGRPCErr(err, syscall.EIO)
 	}
-	child := &wourifsNode{path: childPath, nnAddr: n.nnAddr}
-	out.Attr.Ino = ino(childPath)
+	child := &wourifsNode{path: cp, nnAddr: n.nnAddr}
+	out.Attr.Ino = ino(cp)
 	out.Attr.Mode = fuse.S_IFREG | mode
 	fh := &wourifsFileHandle{
-		path:    childPath,
+		path:    cp,
 		fileID:  resp.FileId,
 		nnAddr:  n.nnAddr,
 		dnConns: make(map[string]*grpc.ClientConn),
@@ -225,10 +218,7 @@ func (n *wourifsNode) Create(ctx context.Context, name string, flags uint32, mod
 }
 
 func (n *wourifsNode) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	childPath := n.path + "/" + name
-	if n.path == "" {
-		childPath = "/" + name
-	}
+	cp := childPath(n.path, name)
 	conn, err := dialNN(n.nnAddr)
 	if err != nil {
 		return nil, syscall.EIO
@@ -236,13 +226,21 @@ func (n *wourifsNode) Mkdir(ctx context.Context, name string, mode uint32, out *
 	defer conn.Close()
 	rctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
-	if _, err := pb.NewNameNodeServiceClient(conn).MakeDirectory(rctx, &pb.MakeDirectoryRequest{Path: childPath, Mode: mode}); err != nil {
+	if _, err := pb.NewNameNodeServiceClient(conn).MakeDirectory(rctx, &pb.MakeDirectoryRequest{Path: cp, Mode: mode}); err != nil {
 		return nil, mapGRPCErr(err, syscall.EIO)
 	}
-	child := &wourifsNode{path: childPath, isDir: true, nnAddr: n.nnAddr}
-	out.Attr.Ino = ino(childPath)
+	child := &wourifsNode{path: cp, isDir: true, nnAddr: n.nnAddr}
+	out.Attr.Ino = ino(cp)
 	out.Attr.Mode = fuse.S_IFDIR | mode
 	return n.NewInode(ctx, child, fs.StableAttr{Mode: fuse.S_IFDIR, Ino: out.Attr.Ino}), 0
+}
+
+// childPath constructs a child path, handling the root case.
+func childPath(parent, name string) string {
+	if parent == "" || parent == "/" {
+		return "/" + name
+	}
+	return parent + "/" + name
 }
 
 func (n *wourifsNode) Rmdir(ctx context.Context, name string) syscall.Errno {
@@ -253,7 +251,7 @@ func (n *wourifsNode) Rmdir(ctx context.Context, name string) syscall.Errno {
 	defer conn.Close()
 	rctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
-	_, err = pb.NewNameNodeServiceClient(conn).RemoveDirectory(rctx, &pb.RemoveDirectoryRequest{Path: n.path + "/" + name})
+	_, err = pb.NewNameNodeServiceClient(conn).RemoveDirectory(rctx, &pb.RemoveDirectoryRequest{Path: childPath(n.path, name)})
 	return mapGRPCErr(err, syscall.ENOTEMPTY)
 }
 
@@ -265,7 +263,7 @@ func (n *wourifsNode) Unlink(ctx context.Context, name string) syscall.Errno {
 	defer conn.Close()
 	rctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
-	_, err = pb.NewNameNodeServiceClient(conn).DeleteFile(rctx, &pb.DeleteFileRequest{Path: n.path + "/" + name})
+	_, err = pb.NewNameNodeServiceClient(conn).DeleteFile(rctx, &pb.DeleteFileRequest{Path: childPath(n.path, name)})
 	return mapGRPCErr(err, syscall.ENOENT)
 }
 
@@ -275,14 +273,8 @@ func (n *wourifsNode) Rename(ctx context.Context, name string, newParent fs.Inod
 	if !ok {
 		return syscall.EIO
 	}
-	oldPath := n.path + "/" + name
-	newPath := newNode.path + "/" + newName
-	if n.path == "" {
-		oldPath = "/" + name
-	}
-	if newNode.path == "" {
-		newPath = "/" + newName
-	}
+	oldPath := childPath(n.path, name)
+	newPath := childPath(newNode.path, newName)
 	conn, err := dialNN(n.nnAddr)
 	if err != nil {
 		return syscall.EIO
@@ -321,10 +313,7 @@ func (n *wourifsNode) Readdir(ctx context.Context) (fs.DirStream, syscall.Errno)
 		} else {
 			mode |= fuse.S_IFREG
 		}
-		childPath := n.path + "/" + e.Name
-		if n.path == "" || n.path == "/" {
-			childPath = "/" + e.Name
-		}
+		childPath := childPath(n.path, e.Name)
 		entries = append(entries, fuse.DirEntry{Name: e.Name, Ino: ino(childPath), Mode: mode})
 	}
 	return fs.NewListDirStream(entries), 0
@@ -492,4 +481,3 @@ func ino(path string) uint64 {
 }
 
 // keep imports alive
-var _ = fmt.Sprintf
