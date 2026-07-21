@@ -22,6 +22,9 @@ service NameNodeService {
 
   // Chunk allocation
   rpc AllocateChunk(AllocateChunkRequest) returns (AllocateChunkResponse);
+
+  // Cluster observability
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
 }
 
 // --- DataNode lifecycle messages ---
@@ -148,4 +151,25 @@ message AllocateChunkRequest {
 message AllocateChunkResponse {
   string chunk_id = 1;
   repeated string datanode_addresses = 2;
+}
+
+// --- Cluster observability ---
+
+message ListNodesRequest {}
+
+message NodeInfo {
+  string node_id = 1;
+  repeated string roles = 2;
+  string tailscale_ip = 3;
+  int32 port = 4;
+  bool available = 5;
+  int64 storage_used_bytes = 6;
+  int64 storage_total_bytes = 7;
+  int32 fuse_sessions = 8;
+  int64 last_heartbeat_unix = 9;
+}
+
+message ListNodesResponse {
+  repeated NodeInfo nodes = 1;
+  string raft_leader_id = 2;
 }
