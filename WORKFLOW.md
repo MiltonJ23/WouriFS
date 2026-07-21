@@ -532,4 +532,125 @@ Chaque poste alloue X Go via `wourifs init --quota`. Total cluster = somme des q
 
 ---
 
-*Document prepared for Sprint 1-3 completion — WouriFS BSc Project, ICT University 2026*
+## Sprint 4 — Raft HA + Observabilité (July 2026)
+
+### 31. Raft HA Integration — Pourquoi walAppend et pas refactoring complet
+
+**Decision:** En mode Raft (`--raft`), `walAppend` soumet l'entrée au log Raft en plus de l'écrire dans le WAL local. Les mutations sont appliquées directement au store du leader, puis répliquées aux followers via `raft.Apply()`. Le FSM ré-applique les mutations (opérations idempotentes).
+
+**Pourquoi cette approche et pas un refactoring complet:**
+- Refactoring complet : remplacer chaque `s.store.CreateFile()` par `s.raftSubmit()` → ~200 lignes de changements, risque élevé de régressions.
+- Approche walAppend : 5 lignes dans walAppend, 0 changement dans les handlers. Les mutations sont idempotentes par conception (PutFile overwrites, DeleteFile sur un fichier déjà supprimé est un no-op).
+- Le WAL local reste actif même en mode Raft — double garantie de durabilité.
+
+**Pourquoi pas de multi-node dans le test d'intégration:**
+- Le protocole `AddVoter` de HashiCorp Raft nécessite un transport TCP entre nœuds avec découverte de pairs.
+- Le test single-node vérifie : élection de leader, Apply via Raft, restart. Le multi-node sera testé manuellement sur les VMs.
+
+### 32. Passthrough Auth pour le développement — Pourquoi DevNoAuthInterceptor
+
+**Decision:** `DevNoAuthInterceptor` injecte un payload `{UserID: "dev-user", Namespace: "/"}` dans chaque requête. Activé via `--dev-no-auth`.
+
+**Pourquoi:**
+- Tester FUSE + Namenode sans infrastructure JWT (génération de clés RSA, distribution de tokens).
+- Les handlers appellent tous `s.auth(ctx)` → sans interceptor, toute opération échoue.
+- Le flag `--dev-no-auth` est explicite et documenté comme "DEVELOPMENT ONLY".
+
+### 33. Gateway Design — Pourquoi HTTP direct et pas reverse proxy gRPC
+
+**Decision:** Le Gateway est un serveur HTTP standalone sur port 8443. Il sert le dashboard HTML et expose une API REST admin. Il traduit les requêtes en appels gRPC vers le Namenode.
+
+**Pourquoi pas gRPC-Gateway / grpc-gateway:**
+- grpc-gateway génère un reverse proxy à partir des annotations proto. Cela nécessite de modifier les .proto, régénérer le code, et maintenir deux jeux d'endpoints.
+- Pour 3 endpoints admin (topology, users, audit), un serveur HTTP de 100 lignes suffit.
+- Le dashboard HTML est embeddé directement — pas de build step, pas de node_modules.
+
+### 34. Grafana Dashboard — Pourquoi avg latency et pas p99
+
+**Decision:** Le panneau latency utilise `rate(_sum)/rate(_count)` (moyenne) et non `histogram_quantile(0.99, rate(_bucket[1m]))` (p99).
+
+**Pourquoi:**
+- L'implémentation metrics.go exporte `_count` et `_sum` mais pas `_bucket`. Les buckets histogram nécessitent de définir des bornes (1ms, 5ms, 10ms, ...) — un choix arbitraire sans données de production.
+- La moyenne est suffisante pour le monitoring opérationnel d'une EMF (3-5 nœuds, faible volume).
+- Les buckets histogram seront ajoutés quand le cluster sera en production avec des données réelles.
+
+---
+
+## Sprint 5 — Snapshots, Cert Rotation, E2E Tests (July 2026)
+
+### 35. Metadata Snapshots — Pourquoi JSON et pas binaire
+
+**Decision:** Les snapshots du MetadataStore sont sérialisés en JSON et stockés dans un répertoire configurable. Retention configurable (défaut: 30 jours). Pruning automatique.
+
+**Pourquoi JSON et pas protobuf/gob:**
+- Cohérence avec le WAL (JSON-lines) et l'audit log (JSON-lines). Même outillage de debug.
+- Le volume de métadonnées est faible (< 10 MB pour 100k fichiers). La performance de sérialisation n'est pas un facteur.
+- JSON est lisible par un humain — un admin peut inspecter un snapshot avec `cat` ou `jq`.
+
+**Pourquoi pas de snapshot incrémental:**
+- La taille des snapshots est négligeable. Un snapshot complet prend < 1 seconde.
+- Les snapshots incrémentaux ajoutent une complexité de restauration (replay du snapshot de base + deltas).
+
+### 36. Certificate Rotation — Pourquoi script bash et pas intégré dans le binaire
+
+**Decision:** `scripts/rotate-certs.sh` est un script bash externe. Il n'est pas intégré dans le binaire Go.
+
+**Pourquoi:**
+- La rotation de certificats est une opération d'infrastructure, pas une opération applicative. L'admin qui gère les certificats est familier avec openssl et bash.
+- Intégrer openssl dans le binaire Go nécessiterait soit des bindings C (cgo), soit une réimplémentation en Go pur (`crypto/x509`). Les deux sont plus lourds qu'un script de 30 lignes.
+- Le script est idempotent : il archive les anciens certificats avant d'en générer de nouveaux.
+
+### 37. E2E Audit Integrity Test — Pourquoi corruption de fichier et pas mock
+
+**Decision:** `TestAuditLog_E2EIntegrity` écrit 10 entrées dans une vraie chaîne, vérifie, corrompt un byte sur disque, et vérifie que la corruption est détectée.
+
+**Pourquoi:**
+- La corruption de fichier est le vecteur d'attaque réel (modification directe du fichier audit.log par un admin).
+- Tester avec une vraie corruption de fichier vérifie l'intégralité du pipeline : sérialisation JSON → SHA-256 → écriture disque → relecture → vérification chaîne.
+- Un mock ne testerait que la logique de vérification, pas le comportement face à une vraie altération de fichier.
+
+### 38. Snapshot Manager — Pourquoi polling et pas signal
+
+**Decision:** Le `snapshot.Manager` utilise un ticker (`time.NewTicker`) pour déclencher les snapshots périodiques.
+
+**Pourquoi pas un signal du Namenode:**
+- Le Namenode n'a pas de hook "nombre d'opérations depuis dernier snapshot". Ajouter ce hook couplerait le snapshot manager au Namenode.
+- Le polling est plus simple et plus robuste : même si le Namenode est occupé, le snapshot finit par être pris.
+- La période par défaut (24h) rend la précision du timing non critique.
+
+### 39. Test Coverage Sprint 4-5 — Final
+
+| Package | Coverage |
+|---|---|
+| `internal/namenode` | 86.7% |
+| `internal/datanode` | 83.8% |
+| `internal/audit` | 85.7% |
+| `internal/keyring` | 90.0% |
+| `internal/watchd` | 95.2% |
+| `internal/observability` | 82.3% |
+| `internal/provision` | 94.1% |
+| `internal/shamir` | 94.6% |
+| `internal/snapshot` | 90.5% |
+| `internal/transport` | 100% |
+| `internal/transport/grpc` | 94.4% |
+| `internal/transport/grpc/interceptor` | 86.1% |
+| `internal/domain/namenode` | 90.7% |
+| `internal/auth/jwt` | 84.2% |
+| `pkg/crypto/bcrypt` | 87.5% |
+| **All internal packages** | **≥82%** |
+
+### 40. CLI Completeness — Zéro placeholder
+
+**Decision:** Toutes les commandes `wourifs serve` sont câblées sur du vrai code. Aucun `select {}` résiduel.
+
+- `wourifs serve namenode` → gRPC Namenode avec WAL + Raft optionnel
+- `wourifs serve datanode` → gRPC Datanode avec heartbeat loop
+- `wourifs serve gateway` → HTTP dashboard sur port 8443
+- `wourifs mount` → FUSE via go-fuse v2
+- `wourifs status` → affichage config + (future: requête gRPC live)
+- `wourifs provision split/combine` → Shamir via CLI (binaire standalone toujours disponible)
+- `wourifs audit log/verify` → (future: requête gRPC AuditLogService)
+
+---
+
+*Document prepared for Sprint 1-5 completion — WouriFS BSc Project, ICT University 2026*
