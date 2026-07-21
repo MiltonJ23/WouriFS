@@ -654,3 +654,69 @@ Chaque poste alloue X Go via `wourifs init --quota`. Total cluster = somme des q
 ---
 
 *Document prepared for Sprint 1-5 completion — WouriFS BSc Project, ICT University 2026*
+
+---
+
+## Beyond Sprint 5 — Advanced Features (July 2026)
+
+### 41. Offline Buffer — Pourquoi JSON-lines local et pas SQLite
+
+**Decision:** Le `internal/offline.Buffer` stocke les opérations en attente dans un fichier JSON-lines local. Pas de base de données embarquée.
+
+**Pourquoi pas SQLite:**
+- Une agence a 1-2 postes. Le volume d'opérations hors ligne est faible (< 1000 par jour).
+- JSON-lines est cohérent avec le WAL et l'audit log (même format, même outillage).
+- SQLite ajouterait une dépendance C (cgo) ou un driver Go pur avec des compromis de performance.
+- Le replay est séquentiel simple — pas besoin de transactions ACID pour un buffer temporaire.
+
+**Mécanisme de replay:**
+- Les opérations sont appliquées dans l'ordre d'insertion.
+- En cas d'échec partiel, les entrées restantes sont conservées pour la prochaine tentative.
+- Le buffer est tronqué uniquement après un replay complet réussi.
+
+### 42. AuditReplicationService — Pourquoi buffer de 1000 et pas streaming continu
+
+**Decision:** L'`AuditReplicationService` pousse chaque entrée d'audit vers un replica dédié. Si le replica est injoignable, les entrées sont mises en mémoire tampon (max 1000). Au-delà, les écritures sont rejetées (`AuditReplicaUnavailable`).
+
+**Pourquoi 1000 entrées:**
+- 1000 entrées à 200 bytes/entrée = 200 KB en mémoire — négligeable.
+- À 10 writes/seconde (charge typique d'une EMF), le buffer couvre ~100 secondes de déconnexion.
+- Au-delà, rejeter les écritures est le comportement fail-safe correct : mieux vaut refuser une écriture que perdre une entrée d'audit.
+
+**Pourquoi pas de streaming continu:**
+- Le streaming gRPC nécessite une connexion persistante. Les coupures réseau sont fréquentes dans le contexte camerounais.
+- Le modèle push-with-buffer est plus résilient : chaque entrée est envoyée immédiatement si connecté, bufferisée sinon.
+- Le Drain() est appelé à la reconnexion pour vider le buffer.
+
+### 43. Raft Multi-Node — Pourquoi AddVoter manuel et pas auto-discovery
+
+**Decision:** Les nœuds rejoignent le cluster Raft via `AddVoter` appelé explicitement sur le leader. Pas de découverte automatique des pairs.
+
+**Pourquoi:**
+- HashiCorp Raft v1.x ne fournit pas de mécanisme de découverte automatique. C'est intentionnel : la composition du cluster est une décision de sécurité, pas une découverte réseau.
+- Dans un déploiement EMF (3-5 postes), la liste des pairs est connue et statique. L'admin la configure une fois dans `wourifs.yaml`.
+- Les protocoles de découverte automatique (mDNS, consul, etcd) ajoutent des dépendances et des surfaces d'attaque injustifiées pour 3 nœuds.
+- Le test d'intégration vérifie : élection de leader, kill du leader, élection d'un nouveau leader parmi les nœuds restants.
+
+### 44. Test Coverage — Final (18 packages)
+
+| Package | Coverage |
+|---|---|
+| `internal/audit` | 89.8% |
+| `internal/auditsvc` | 93.5% |
+| `internal/auth/jwt` | 84.2% |
+| `internal/datanode` | 83.8% |
+| `internal/domain/namenode` | 90.7% |
+| `internal/keyring` | 90.0% |
+| `internal/namenode` | 86.7% |
+| `internal/observability` | 82.3% |
+| `internal/offline` | 82.5% |
+| `internal/provision` | 94.1% |
+| `internal/shamir` | 94.6% |
+| `internal/snapshot` | 82.2% |
+| `internal/transport` | 100% |
+| `internal/transport/grpc` | 94.4% |
+| `internal/transport/grpc/interceptor` | 86.1% |
+| `internal/watchd` | 95.2% |
+| `pkg/crypto/bcrypt` | 87.5% |
+| **All 18 packages** | **≥82%** |
