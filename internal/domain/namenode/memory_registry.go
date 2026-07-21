@@ -33,6 +33,8 @@ func (i *InMemoryDataNodeRegistry) Register(node *DataNodeStatus) error {
 	nodeCopy := *node
 	nodeCopy.LastHeartbeat = time.Now()
 	nodeCopy.IsAvailable = true
+	nodeCopy.StorageUsed = node.TotalStorageBytes - node.FreeStorageBytes
+	nodeCopy.TotalStorage = node.TotalStorageBytes
 	i.nodes[nodeCopy.ID] = &nodeCopy
 
 	return nil
@@ -94,4 +96,9 @@ func (i *InMemoryDataNodeRegistry) GetAll() []*DataNodeStatus {
 		allNodes = append(allNodes, &nodeCopy)
 	}
 	return allNodes
+}
+
+// ListStatus returns all nodes with their full status for the admin dashboard.
+func (i *InMemoryDataNodeRegistry) ListStatus() []*DataNodeStatus {
+	return i.GetAll()
 }

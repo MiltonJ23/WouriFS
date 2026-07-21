@@ -380,6 +380,29 @@ func (s *NameNodeServer) auth(ctx context.Context) (*domain.TokenPayload, error)
 	return interceptor.PayloadFromContext(ctx)
 }
 
+// ListNodes returns the current cluster topology (FR-ADM-008).
+func (s *NameNodeServer) ListNodes(ctx context.Context) *pb.ListNodesResponse {
+	nodes := s.registry.ListStatus()
+	pbNodes := make([]*pb.NodeInfo, len(nodes))
+	for i, n := range nodes {
+		pbNodes[i] = &pb.NodeInfo{
+			NodeId:            n.ID,
+			Roles:             n.Roles,
+			TailscaleIp:       n.Address,
+			Port:              n.Port,
+			Available:         n.IsAvailable,
+			StorageUsedBytes:  n.StorageUsed,
+			StorageTotalBytes: n.TotalStorage,
+			FuseSessions:      n.FuseSessions,
+			LastHeartbeatUnix: n.LastHeartbeat.Unix(),
+		}
+	}
+	return &pb.ListNodesResponse{
+		Nodes:        pbNodes,
+		RaftLeaderId: "", // set when Raft HA is wired
+	}
+}
+
 func (s *NameNodeServer) walAppend(e WALEntry) {
 	if s.wal == nil {
 		return
