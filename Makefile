@@ -1,4 +1,4 @@
-.PHONY: build test cover bench proto clean lint all provision share fuse
+ .PHONY: build test cover bench proto clean lint all provision share fuse
 
 GO ?= go
 PROTOC ?= protoc
