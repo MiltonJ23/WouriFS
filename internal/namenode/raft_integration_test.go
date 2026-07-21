@@ -55,7 +55,17 @@ func TestRaftFSM_ApplyAndVerify(t *testing.T) {
 	os.MkdirAll(cfg.DataDir, 0750)
 	r, _, _ := BootstrapRaft(cfg, store)
 	defer r.Shutdown()
-	time.Sleep(time.Second)
+
+	// Wait for leader election before submitting
+	dl := time.After(5 * time.Second)
+	for r.State() != raft.Leader {
+		select {
+		case <-dl:
+			t.Fatal("leader not elected")
+		default:
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
 
 	srv := &NameNodeServer{store: store}
 	srv.SetRaft(r)
