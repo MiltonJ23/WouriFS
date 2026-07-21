@@ -8,7 +8,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 	nn "github.com/MiltonJ23/WouriFS/internal/namenode"
 	"github.com/MiltonJ23/WouriFS/internal/observability"
 	interceptor "github.com/MiltonJ23/WouriFS/internal/transport/grpc/interceptor"
+	"github.com/hashicorp/raft"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -49,7 +49,8 @@ Example:
 // --- namenode ---
 
 func serveNamenodeCmd() *cobra.Command {
-	var devNoAuth bool
+	var devNoAuth, raftMode bool
+	var raftPeer string
 
 	cmd := &cobra.Command{
 		Use:   "namenode",
@@ -93,7 +94,35 @@ func serveNamenodeCmd() *cobra.Command {
 			nnSrv := nn.NewNameNodeServer(store, reg, w, nnLogger)
 			pb.RegisterNameNodeServiceServer(grpcSrv, nnSrv)
 
-			ctx, cancel := shutdownCtx(grpcSrv)
+			var raftInstance *raft.Raft
+			if raftMode {
+				raftCfg := nn.RaftConfig{
+					NodeID:       string(raft.ServerID(cfg.Node.ID)),
+					BindAddr:     raftPeer,
+					DataDir:      nnDir + "/raft",
+					Bootstrap:    len(cfg.Network.NamenodePeers) <= 1,
+					Peers:        cfg.Network.NamenodePeers,
+					ApplyTimeout: 5 * time.Second,
+				}
+				if err := os.MkdirAll(raftCfg.DataDir, 0750); err != nil {
+					return fmt.Errorf("raft data dir: %w", err)
+				}
+				r, _, err := nn.BootstrapRaft(raftCfg, store)
+				if err != nil {
+					return fmt.Errorf("raft bootstrap: %w", err)
+				}
+				raftInstance = r
+				nnSrv.SetRaft(r)
+				log.Printf("[namenode] raft mode enabled, node=%s peers=%v", cfg.Node.ID, cfg.Network.NamenodePeers)
+			}
+
+			var ctx context.Context
+			var cancel context.CancelFunc
+			if raftInstance != nil {
+				ctx, cancel = shutdownCtxWithRaft(grpcSrv, raftInstance)
+			} else {
+				ctx, cancel = shutdownCtx(grpcSrv)
+			}
 			defer cancel()
 			hm.Start(ctx)
 			defer hm.Stop()
@@ -103,12 +132,18 @@ func serveNamenodeCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("listen %s: %w", addr, err)
 			}
-			log.Printf("[namenode] %s listening on %s (rf=%d)", cfg.Node.ID, addr, cfg.Cluster.ReplicationFactor)
+			mode := "standalone"
+			if raftMode {
+				mode = "raft"
+			}
+			log.Printf("[namenode] %s listening on %s (rf=%d, mode=%s)", cfg.Node.ID, addr, cfg.Cluster.ReplicationFactor, mode)
 
 			return grpcSrv.Serve(lis)
 		},
 	}
 	cmd.Flags().BoolVar(&devNoAuth, "dev-no-auth", false, "disable JWT authentication (DEVELOPMENT ONLY)")
+	cmd.Flags().BoolVar(&raftMode, "raft", false, "enable Raft consensus (requires 3 nodes)")
+	cmd.Flags().StringVar(&raftPeer, "raft-bind", "0.0.0.0:9001", "Raft transport bind address")
 	return cmd
 }
 
@@ -204,6 +239,24 @@ func shutdownCtx(srv *grpc.Server) (context.Context, context.CancelFunc) {
 	return ctx, cancel
 }
 
+func shutdownCtxWithRaft(srv *grpc.Server, r *raft.Raft) (context.Context, context.CancelFunc) {
+	ctx, cancel := context.WithCancel(context.Background())
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		log.Println("shutting down...")
+		if r != nil {
+			if err := r.Shutdown().Error(); err != nil {
+				log.Printf("raft shutdown: %v", err)
+			}
+		}
+		srv.GracefulStop()
+		cancel()
+	}()
+	return ctx, cancel
+}
+
 func datanodeHeartbeatLoop(ctx context.Context, nodeID, dnAddr, nnAddr string) {
 	// Register with Namenode
 	register := func() {
@@ -250,6 +303,3 @@ func datanodeHeartbeatLoop(ctx context.Context, nodeID, dnAddr, nnAddr string) {
 		}
 	}
 }
-
-// keep imports alive
-var _ = strconv.Itoa

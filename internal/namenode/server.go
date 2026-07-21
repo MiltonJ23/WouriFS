@@ -2,6 +2,7 @@ package namenode
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	pb "github.com/MiltonJ23/WouriFS/api/gen/v1/namenode"
@@ -9,6 +10,7 @@ import (
 	domainnn "github.com/MiltonJ23/WouriFS/internal/domain/namenode"
 	"github.com/MiltonJ23/WouriFS/internal/observability"
 	"github.com/MiltonJ23/WouriFS/internal/transport/grpc/interceptor"
+	"github.com/hashicorp/raft"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -19,6 +21,7 @@ type NameNodeServer struct {
 	store    *MetadataStore
 	registry *domainnn.InMemoryDataNodeRegistry
 	wal      *WAL
+	raftNode *raft.Raft // nil = standalone WAL mode
 	log      *observability.Logger
 }
 
@@ -28,6 +31,35 @@ func NewNameNodeServer(store *MetadataStore, registry *domainnn.InMemoryDataNode
 		logger = observability.NewTestLogger()
 	}
 	return &NameNodeServer{store: store, registry: registry, wal: wal, log: logger}
+}
+
+// SetRaft enables consensus mode. After calling this, all mutations are submitted
+// to the Raft log instead of being applied directly to the store.
+func (s *NameNodeServer) SetRaft(r *raft.Raft) {
+	s.raftNode = r
+}
+
+// IsLeader reports whether this node is the Raft leader. In standalone (no-raft)
+// mode, always returns true.
+func (s *NameNodeServer) IsLeader() bool {
+	if s.raftNode == nil {
+		return true
+	}
+	return s.raftNode.State() == raft.Leader
+}
+
+// raftSubmit serializes a WAL entry, applies it through the Raft log, and
+// waits for commitment. If this node is not the leader, the call is redirected.
+func (s *NameNodeServer) raftSubmit(e WALEntry) error {
+	if s.raftNode == nil {
+		return nil // standalone mode: WAL-only, no consensus needed
+	}
+	data, err := json.Marshal(e)
+	if err != nil {
+		return err
+	}
+	future := s.raftNode.Apply(data, 5*time.Second)
+	return future.Error()
 }
 
 // --- DataNode lifecycle ---
@@ -404,10 +436,16 @@ func (s *NameNodeServer) ListNodes(ctx context.Context) *pb.ListNodesResponse {
 }
 
 func (s *NameNodeServer) walAppend(e WALEntry) {
-	if s.wal == nil {
-		return
+	if s.wal != nil {
+		if err := s.wal.Append(e); err != nil {
+			s.log.Warn("wal_append_failed", "op", e.Op, "path", e.Path, "error", err)
+		}
 	}
-	if err := s.wal.Append(e); err != nil {
-		s.log.Warn("wal_append_failed", "op", e.Op, "path", e.Path, "error", err)
+	// In raft mode, replicate to followers. The FSM's Apply() is idempotent
+	// on all mutation types, so re-applying is safe.
+	if s.raftNode != nil && s.raftNode.State() == raft.Leader {
+		if err := s.raftSubmit(e); err != nil {
+			s.log.Warn("raft_replicate_failed", "op", e.Op, "path", e.Path, "error", err)
+		}
 	}
 }
