@@ -203,26 +203,8 @@ func runDatanode(cmd *cobra.Command, args []string) error {
 	return grpcSrv.Serve(lis)
 }
 
-// --- gateway (placeholder) ---
+// serveGatewayCmd defined in gateway.go
 
-func serveGatewayCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "gateway",
-		Short: "Start the Gateway admin dashboard server",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := LoadConfig(configPath)
-			if err != nil {
-				return err
-			}
-			if !cfg.HasRole("gateway") {
-				return fmt.Errorf("node %q missing role 'gateway'", cfg.Node.ID)
-			}
-			fmt.Printf("[gateway] %s would start on :%d (not yet implemented)\n",
-				cfg.Node.ID, cfg.Network.GatewayPort)
-			select {} // placeholder
-		},
-	}
-}
 
 // --- helpers ---
 
