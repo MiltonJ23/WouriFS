@@ -169,6 +169,57 @@ This project is a Bachelor's Final Year Dissertation at The ICT University. Exte
 
 ---
 
+## Comparative Analysis — Why Not an Existing Solution?
+
+The storage integrity problem addressed by WouriFS has several existing approaches. None were designed for small microfinance institutions without dedicated IT staff.
+
+| Approach | Data Silos | Audit Trail | Deployable without IT | License Cost | Maturity |
+|---|---|---|---|---|---|
+| **Core Banking** (Flexcube, Temenos) | ✅ Centralized | ✅ Application-level | ❌ Requires DBA + 3-5 IT staff | 50--200M FCFA/yr | Production |
+| **Simple DFS** (NFS, Samba, GlusterFS) | ✅ Centralized | ❌ None | ✅ One-time setup | Free | Production |
+| **Fork-Consistent DFS** (SUNDR, Depot) | ✅ Centralized | ⚠️ Fork detection only | ❌ Requires client coordination | N/A | Research prototype |
+| **WORM Storage** (S3 Object Lock, SnapLock) | ✅ Centralized | ❌ Immutability, no attribution | ❌ Enterprise infrastructure | Enterprise pricing | Production |
+| **Blockchain / DLT** (Hyperledger, Corda) | ✅ Replicated | ✅ Cryptographic | ❌ 3--5 validator nodes | High (infra + ops) | Production |
+| **WouriFS** | ✅ Replicated (RF=3) | ✅ Merkle-chained, timestamped, attributable | ✅ One binary, zero servers | Free | BSc prototype |
+
+### Core Banking
+
+Full-featured platforms handling clients, accounts, loans, and regulatory reporting. Require dedicated servers, Oracle/SQL Server, and a trained operations team. The annual license exceeds the total IT budget of a Category 2 EMF. A Category 1 EMF (~500 clients) does not need interbank reconciliation or SWIFT messaging. Core banking is the right tool for the wrong institution size.
+
+### Simple Distributed Filesystems
+
+NFS, Samba, and GlusterFS centralize storage across machines at zero cost. They solve the data silo problem but do nothing about ledger manipulation. The files are stored remotely — they are also modified remotely, without any record of who changed what. FIFFA's administrators did not lack a shared folder; they altered the files it contained. A distributed filesystem without an audit layer is a larger disk, not a safer one.
+
+### Fork-Consistent Filesystems
+
+Systems like SUNDR (Li et al., 2004) and Depot (Mahajan et al., 2010) detect when a server presents inconsistent file versions to different clients. This is a powerful primitive for untrusted cloud storage, but it targets a threat model orthogonal to the EMF context. Branch managers at FIFFA and COMECI did not attempt Byzantine fork attacks — they opened Excel, modified a cell, and saved. The server saw a legitimate write. Fork consistency would not have flagged it.
+
+### WORM Storage
+
+Write-Once-Read-Many guarantees that data, once written, cannot be overwritten. Amazon S3 Object Lock and NetApp SnapLock are certified for SEC 17a-4 compliance. However, WORM is designed for archival retention — an Excel ledger modified fifty times per day is incompatible with immutable blocks. WORM also provides no attribution (who wrote this block?) and no integrity verification chain (was this block altered before the WORM policy took effect?).
+
+### Blockchain / Distributed Ledger Technology
+
+DLT offers immutability by design: every transaction is signed, timestamped, and cryptographically chained. The appeal is obvious. The operational reality is prohibitive: Hyperledger Fabric requires certificate authorities, ordering services, and channel policies. A 15-employee EMF cannot operate a consortium blockchain. Transaction latency (seconds) is incompatible with filesystem expectations (milliseconds). Blockchain solves inter-organizational trust — WouriFS addresses intra-organizational accountability, which requires a simpler tool.
+
+### WouriFS — Positioning
+
+WouriFS occupies a narrow, defensible niche: **the gap between a shared folder and a core banking system.** It does not replace Excel, enforce business rules, or prevent fraudulent data entry — those are governance problems. What it prevents is undetectable data modification. Every `Ctrl+S` generates a timestamped, attributable entry in a SHA-256 Merkle chain. A manager who alters a ledger cannot erase the record of having done so.
+
+For a Category 1 EMF operating on USB drives and email attachments, WouriFS is an immediate, zero-cost upgrade to auditable storage. For an EMF that later adopts a core banking platform, WouriFS remains the storage layer underneath — becoming invisible infrastructure rather than obsolete middleware.
+
+### Known Limitations
+
+1. **Application-level fraud is out of scope.** WouriFS records that a write occurred; it does not validate the data written. A fraudulent transaction entered through Excel remains fraudulent — but it is now timestamped, attributable, and non-repudiable.
+
+2. **Collusion between both Shamir key holders** (director + IT administrator) can bypass provisioning controls. WouriFS raises the bar from one actor to two; it does not eliminate the threat of coordinated internal conspiracy.
+
+3. **FUSE latency.** Every filesystem operation involves a gRPC round-trip. On high-latency links (rural 3G), interactive performance degrades. Mitigation: read-ahead buffering and write-back caching are planned for future releases.
+
+4. **No external backup integration.** Automated snapshots are stored locally. Off-site backup (S3, rsync) must be configured separately.
+
+---
+
 ## License
 
 Copyright &copy; 2026 Zingui Fred Mike. All Rights Reserved.
