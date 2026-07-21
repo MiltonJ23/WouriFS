@@ -6,13 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 )
 
 // ChunkStore persists chunks as flat binary files (FR-D-001).
 // Directory layout: <dataDir>/<chunk_id>
 type ChunkStore struct {
-	mu      sync.RWMutex
 	dataDir string
 }
 

@@ -80,11 +80,7 @@ func (db *DB) GetShare(institutionID, nodeID string) ([]byte, int32, error) {
 	// Decode share from hex
 	shareInt := new(big.Int)
 	shareInt.SetString(inst.Share, 16)
-	if shareInt == nil {
-		return nil, 0, fmt.Errorf("invalid share data for institution %s", institutionID)
-	}
 
-	// Log provisioning audit
 	db.auditLog = append(db.auditLog, Entry{
 		InstitutionID: institutionID,
 		NodeID:        nodeID,
