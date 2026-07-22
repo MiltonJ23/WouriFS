@@ -59,7 +59,6 @@ type wourifsNode struct {
 	path   string
 	isDir  bool
 	nnAddr string
-	mu     sync.Mutex
 }
 
 // Compile-time interface checks.
