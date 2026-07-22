@@ -45,6 +45,8 @@ message WriteChunkResponse {
 
 message ReadChunkRequest {
   string chunk_id = 1;
+  int64 offset = 2;      // byte offset within the chunk (0 = read from start)
+  int64 limit = 3;       // max bytes to read (0 = read entire chunk)
 }
 
 message ReadChunkResponse {

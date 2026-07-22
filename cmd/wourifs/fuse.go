@@ -380,7 +380,11 @@ func (f *wourifsFileHandle) Read(ctx context.Context, dest []byte, off int64) (f
 	}
 	rctx2, cancel2 := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel2()
-	stream, err := datanodepb.NewDataNodeServiceClient(dnConn).ReadChunk(rctx2, &datanodepb.ReadChunkRequest{ChunkId: chunk.ChunkId})
+	stream, err := datanodepb.NewDataNodeServiceClient(dnConn).ReadChunk(rctx2, &datanodepb.ReadChunkRequest{
+		ChunkId: chunk.ChunkId,
+		Offset:  offChunk,
+		Limit:   int64(len(dest)),
+	})
 	if err != nil {
 		return nil, mapGRPCErr(err, syscall.EIO)
 	}
@@ -398,14 +402,7 @@ func (f *wourifsFileHandle) Read(ctx context.Context, dest []byte, off int64) (f
 			break
 		}
 	}
-	if offChunk >= int64(len(data)) {
-		return fuse.ReadResultData([]byte{}), 0
-	}
-	end := offChunk + int64(len(dest))
-	if end > int64(len(data)) {
-		end = int64(len(data))
-	}
-	return fuse.ReadResultData(data[offChunk:end]), 0
+	return fuse.ReadResultData(data), 0
 }
 
 func (f *wourifsFileHandle) Write(ctx context.Context, data []byte, off int64) (uint32, syscall.Errno) {

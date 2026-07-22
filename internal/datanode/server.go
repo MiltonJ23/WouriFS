@@ -73,6 +73,7 @@ func (s *Server) WriteChunk(stream datanodepb.DataNodeService_WriteChunkServer) 
 }
 
 // ReadChunk sends the chunk content via server-side streaming in 1MB blocks (FR-D-002, FR-D-006).
+// If offset/limit are specified, only that range is read.
 func (s *Server) ReadChunk(req *datanodepb.ReadChunkRequest, stream datanodepb.DataNodeService_ReadChunkServer) error {
 	reader, size, err := s.store.Read(req.ChunkId)
 	if err != nil {
@@ -80,7 +81,22 @@ func (s *Server) ReadChunk(req *datanodepb.ReadChunkRequest, stream datanodepb.D
 	}
 	defer reader.Close()
 
-	const blockSize = 1 << 20 // 1 MB
+	// Seek to requested offset
+	if req.Offset > 0 {
+		if seeker, ok := reader.(io.Seeker); ok {
+			if _, err := seeker.Seek(req.Offset, io.SeekStart); err != nil {
+				return status.Errorf(codes.Internal, "seek: %v", err)
+			}
+			size -= req.Offset
+		}
+	}
+
+	// Apply limit
+	if req.Limit > 0 && req.Limit < size {
+		size = req.Limit
+	}
+
+	const blockSize = 1 << 20
 	buf := make([]byte, blockSize)
 	index := int32(0)
 	remaining := size

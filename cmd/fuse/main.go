@@ -476,7 +476,7 @@ func (f *wourifsFileHandle) Read(ctx context.Context, dest []byte, off int64) (f
 	defer dnConn.Close()
 	dnClient := datanodepb.NewDataNodeServiceClient(dnConn)
 
-	stream, err := dnClient.ReadChunk(ctx, &datanodepb.ReadChunkRequest{ChunkId: chunk.ChunkId})
+	stream, err := dnClient.ReadChunk(ctx, &datanodepb.ReadChunkRequest{ChunkId: chunk.ChunkId, Offset: offsetInChunk, Limit: int64(len(dest))})
 	if err != nil {
 		return nil, syscall.EIO
 	}
@@ -493,15 +493,7 @@ func (f *wourifsFileHandle) Read(ctx context.Context, dest []byte, off int64) (f
 		}
 	}
 
-	if offsetInChunk >= int64(len(data)) {
-		return fuse.ReadResultData([]byte{}), 0
-	}
-
-	end := offsetInChunk + int64(len(dest))
-	if end > int64(len(data)) {
-		end = int64(len(data))
-	}
-	return fuse.ReadResultData(data[offsetInChunk:end]), 0
+	return fuse.ReadResultData(data), 0
 }
 
 func (f *wourifsFileHandle) Write(ctx context.Context, data []byte, off int64) (uint32, syscall.Errno) {
