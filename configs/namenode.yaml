@@ -1,0 +1,22 @@
+# WouriFS Namenode configuration (Sprint 1)
+# Values shown are defaults; all keys are optional for development.
+
+addr: "0.0.0.0:9000"           # gRPC listen address
+data_dir: "./data/namenode"     # WAL and persistent metadata storage
+replication_factor: 3           # default chunk replication (FR-N-008)
+
+# Health monitoring (FR-N-005)
+health:
+  sweep_interval: "5s"         # how often to check for dead nodes
+  heartbeat_timeout: "15s"     # mark unavailable after this (3 missed heartbeats)
+
+# JWT authentication (NFR-S-003)
+jwt:
+  private_key_path: "./certs/jwt_rsa"      # RSA private key PEM
+  public_key_path: "./certs/jwt_rsa.pub"   # RSA public key PEM
+
+# TLS configuration (NFR-S-001)
+tls:
+  cert_path: "./certs/namenode.crt"
+  key_path: "./certs/namenode.key"
+  ca_cert_path: "./certs/ca.crt"

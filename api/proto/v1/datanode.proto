@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package datanode.v1;
+
+option go_package = "github.com/MiltonJ23/WouriFS/api/gen/v1/datanode;datanodepb";
+
+service DataNodeService {
+  // Write a full chunk via client-side streaming of 1MB blocks (FR-D-002, FR-D-006)
+  rpc WriteChunk(stream WriteChunkRequest) returns (WriteChunkResponse);
+
+  // Read a chunk via server-side streaming of 1MB blocks (FR-D-002, FR-D-006)
+  rpc ReadChunk(ReadChunkRequest) returns (stream ReadChunkResponse);
+
+  // Delete a chunk from local storage (FR-D-002)
+  rpc DeleteChunk(DeleteChunkRequest) returns (DeleteChunkResponse);
+
+  // Accept a replicated chunk from a peer Datanode (FR-D-004)
+  rpc ReplicateChunk(stream ReplicateChunkRequest) returns (ReplicateChunkResponse);
+
+  // Status returns health and capacity info (observability endpoint)
+  rpc Status(StatusRequest) returns (StatusResponse);
+}
+
+message StatusRequest {}
+
+message StatusResponse {
+  int64 total_bytes = 1;
+  int64 free_bytes = 2;
+  int64 used_bytes = 3;
+  int32 chunk_count = 4;
+  int32 active_connections = 5;
+}
+
+message WriteChunkRequest {
+  string chunk_id = 1;
+  bytes data = 2;       // up to 1MB per message (FR-D-006)
+  int32 block_index = 3; // 0-based index of this block within the chunk
+  bool is_last = 4;      // true for the final block of the chunk
+}
+
+message WriteChunkResponse {
+  string chunk_id = 1;
+  int64 bytes_written = 2; // total bytes persisted for this chunk
+}
+
+message ReadChunkRequest {
+  string chunk_id = 1;
+  int64 offset = 2;      // byte offset within the chunk (0 = read from start)
+  int64 limit = 3;       // max bytes to read (0 = read entire chunk)
+}
+
+message ReadChunkResponse {
+  bytes data = 1;       // up to 1MB per message
+  int32 block_index = 2;
+  bool is_last = 3;
+}
+
+message DeleteChunkRequest {
+  string chunk_id = 1;
+}
+
+message DeleteChunkResponse {}
+
+message ReplicateChunkRequest {
+  string chunk_id = 1;
+  bytes data = 2;
+  int32 block_index = 3;
+  bool is_last = 4;
+}
+
+message ReplicateChunkResponse {
+  string chunk_id = 1;
+  int64 bytes_written = 2;
+}

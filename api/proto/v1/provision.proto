@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package provision.v1;
+
+option go_package = "github.com/MiltonJ23/WouriFS/api/gen/v1/provision;provisionpb";
+
+// ShareService is the COBAC-operated service that delivers Shamir shares
+// over the network during dual-control workstation provisioning.
+// Authenticated via mTLS + JWT; the institution cannot revoke the COBAC's
+// CA-issued certificate.
+service ShareService {
+  // GetShare returns the institution's share for provisioning a new station.
+  // The caller must present a valid JWT identifying the institution.
+  rpc GetShare(GetShareRequest) returns (GetShareResponse);
+
+  // RevokeInstitution permanently blocks an institution from receiving shares.
+  // Used when COBAC suspends or revokes an EMF's license.
+  rpc RevokeInstitution(RevokeInstitutionRequest) returns (RevokeInstitutionResponse);
+
+  // AuditLog returns the provisioning audit trail for a given institution.
+  // Read-only; each GetShare call is logged immutably.
+  rpc AuditLog(AuditLogRequest) returns (AuditLogResponse);
+}
+
+message GetShareRequest {
+  string institution_id = 1; // EMF identifier from COBAC registry
+  string node_id = 2;        // unique ID of the station being provisioned
+}
+
+message GetShareResponse {
+  bytes share = 1;           // the Shamir share (big.Int marshaled as bytes)
+  int32 share_index = 2;     // which share this is (1 or 2 of n)
+  int64 issued_at_unix = 3;  // timestamp for audit
+}
+
+message RevokeInstitutionRequest {
+  string institution_id = 1;
+  string reason = 2;         // e.g. "license revoked per COBAC decision #xyz"
+}
+
+message RevokeInstitutionResponse {}
+
+message AuditLogRequest {
+  string institution_id = 1;
+  int64 since_unix = 2;      // filter entries after this timestamp
+}
+
+message ProvisionEntry {
+  string institution_id = 1;
+  string node_id = 2;
+  int64 timestamp_unix = 3;
+  string action = 4;         // "get_share" or "revoke"
+}
+
+message AuditLogResponse {
+  repeated ProvisionEntry entries = 1;
+}

@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 39,
+  "title": "WouriFS — Microfinance Storage Observability",
+  "uid": "wourifs",
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "description": "Prometheus data source scraping WouriFS /metrics endpoints",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "title": "Operations / sec",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "rate(wourifs_op_total[1m])", "legendFormat": "{{op}} {{status}}"}
+      ]
+    },
+    {
+      "id": 2,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "title": "Operation Latency (avg)",
+      "description": "Average latency computed from _count/_sum (histogram buckets not exported)",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "rate(wourifs_op_duration_seconds_sum[1m]) / rate(wourifs_op_duration_seconds_count[1m])", "legendFormat": "{{op}}"}
+      ]
+    },
+    {
+      "id": 3,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "title": "Bytes / sec",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "rate(wourifs_op_bytes_total[1m])", "legendFormat": "{{op}}"}
+      ]
+    },
+    {
+      "id": 4,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "title": "Error Rate",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "rate(wourifs_ops_errors[1m])", "legendFormat": "{{op}}"}
+      ]
+    },
+    {
+      "id": 5,
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "title": "Active Datanodes",
+      "type": "stat",
+      "targets": [
+        {"expr": "wourifs_datanodes_available"}
+      ]
+    },
+    {
+      "id": 6,
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "title": "Chunk Storage Usage",
+      "type": "gauge",
+      "fieldConfig": {"defaults": {"unit": "percent"}},
+      "targets": [
+        {"expr": "wourifs_chunk_bytes_used / wourifs_chunk_bytes_total * 100", "legendFormat": "usage %"}
+      ]
+    }
+  ]
+}
