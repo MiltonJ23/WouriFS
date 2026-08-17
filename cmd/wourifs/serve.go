@@ -82,15 +82,36 @@ func serveNamenodeCmd() *cobra.Command {
 			}
 
 			reg := domain.NewInMemoryDataNodeRegistry()
-			hm, _ := domain.NewHealthMonitor(reg, domain.DefaultClock, 5*time.Second, 15*time.Second)
 
-			grpcOpts := []grpc.ServerOption{}
+			// OTLP pipeline: logs + metrics + traces exported to the collector.
+			pipeline, obsShutdown := setupObservability(cfg, "namenode")
+			defer obsShutdown()
+
+			nnLogger := observability.NewLogger(slog.LevelInfo)
+			if pipeline != nil {
+				nnLogger = observability.NewLoggerWithOtel(slog.LevelInfo, pipeline.LoggerProvider)
+				nnLogger.Metrics().AttachOtel(pipeline.MeterProvider.Meter("wourifs"))
+			}
+
+			sampleRate := cfg.Tracing.SampleRate
+			if sampleRate <= 0 && cfg.Tracing.Enabled {
+				sampleRate = 1.0
+			}
+			tracer := observability.NewTracer(sampleRate)
+			if pipeline != nil {
+				tracer = observability.NewTracerWithOtel(sampleRate, pipeline.TracerProvider)
+			}
+
+			unaryInts := []grpc.UnaryServerInterceptor{tracer.UnaryServerInterceptor()}
 			if devNoAuth {
-				grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(interceptor.DevNoAuthInterceptor()))
+				unaryInts = append(unaryInts, interceptor.DevNoAuthInterceptor())
 				log.Printf("[namenode] WARNING: running without auth (--dev-no-auth)")
 			}
+			grpcOpts := []grpc.ServerOption{
+				grpc.ChainUnaryInterceptor(unaryInts...),
+				grpc.StreamInterceptor(tracer.StreamServerInterceptor()),
+			}
 			grpcSrv := grpc.NewServer(grpcOpts...)
-			nnLogger := observability.NewLogger(slog.LevelInfo)
 			nnSrv := nn.NewNameNodeServer(store, reg, w, nnLogger)
 			pb.RegisterNameNodeServiceServer(grpcSrv, nnSrv)
 
@@ -107,7 +128,7 @@ func serveNamenodeCmd() *cobra.Command {
 				if err := os.MkdirAll(raftCfg.DataDir, 0750); err != nil {
 					return fmt.Errorf("raft data dir: %w", err)
 				}
-				r, _, err := nn.BootstrapRaft(raftCfg, store)
+				r, _, err := nn.BootstrapRaft(raftCfg, store, reg)
 				if err != nil {
 					return fmt.Errorf("raft bootstrap: %w", err)
 				}
@@ -115,6 +136,16 @@ func serveNamenodeCmd() *cobra.Command {
 				nnSrv.SetRaft(r)
 				log.Printf("[namenode] raft mode enabled, node=%s peers=%v", cfg.Node.ID, cfg.Network.NamenodePeers)
 			}
+
+			// Health monitor. In Raft mode only the leader sweeps, and its
+			// MarkUnavailable is replicated through the log, so the decision
+			// is cluster-wide instead of local.
+			var healthReg domain.HealthRegistry = reg
+			if raftInstance != nil {
+				healthReg = &raftHealthRegistry{reg: reg, srv: nnSrv}
+			}
+			hm, _ := domain.NewHealthMonitor(healthReg, domain.DefaultClock, 5*time.Second, 15*time.Second)
+			defer hm.Stop()
 
 			var ctx context.Context
 			var cancel context.CancelFunc
@@ -124,8 +155,16 @@ func serveNamenodeCmd() *cobra.Command {
 				ctx, cancel = shutdownCtx(grpcSrv)
 			}
 			defer cancel()
-			hm.Start(ctx)
-			defer hm.Stop()
+
+			if raftInstance != nil {
+				go runLeaderHealthMonitor(ctx, raftInstance, hm)
+			} else {
+				hm.Start(ctx)
+			}
+
+			if cfg.Metrics.Enabled {
+				startMetricsServer(cfg.Metrics.Port, nnLogger.Metrics(), "namenode")
+			}
 
 			addr := fmt.Sprintf("0.0.0.0:%d", cfg.Network.NamenodePort)
 			lis, err := net.Listen("tcp", addr)
@@ -177,34 +216,59 @@ func runDatanode(cmd *cobra.Command, args []string) error {
 		capacity = 1 << 30 // default 1 GiB
 	}
 
-	grpcSrv := grpc.NewServer()
+	// OTLP pipeline: logs + metrics + traces exported to the collector.
+	pipeline, obsShutdown := setupObservability(cfg, "datanode")
+	defer obsShutdown()
+
+	dnLogger := observability.NewLogger(slog.LevelInfo)
+	if pipeline != nil {
+		dnLogger = observability.NewLoggerWithOtel(slog.LevelInfo, pipeline.LoggerProvider)
+		dnLogger.Metrics().AttachOtel(pipeline.MeterProvider.Meter("wourifs"))
+	}
+
+	tracer := observability.NewTracer(1.0)
+	if pipeline != nil {
+		tracer = observability.NewTracerWithOtel(1.0, pipeline.TracerProvider)
+	}
+
+	grpcSrv := grpc.NewServer(
+		grpc.UnaryInterceptor(tracer.UnaryServerInterceptor()),
+		grpc.StreamInterceptor(tracer.StreamServerInterceptor()),
+	)
 	dnSrv := datanode.NewServer(store, capacity)
 	datanodepb.RegisterDataNodeServiceServer(grpcSrv, dnSrv)
 
-	// Resolve Namenode address: use first peer if configured, else localhost
-	nnAddr := fmt.Sprintf("127.0.0.1:%d", cfg.Network.NamenodePort)
-	if len(cfg.Network.NamenodePeers) > 0 {
-		nnAddr = cfg.Network.NamenodePeers[0]
+	// Resolve namenode addresses: prefer the explicit list (leader discovery),
+	// else the first raft peer, else localhost.
+	nnAddrs := cfg.Network.NamenodeAddrs
+	if len(nnAddrs) == 0 {
+		if len(cfg.Network.NamenodePeers) > 0 {
+			nnAddrs = []string{cfg.Network.NamenodePeers[0]}
+		} else {
+			nnAddrs = []string{fmt.Sprintf("127.0.0.1:%d", cfg.Network.NamenodePort)}
+		}
 	}
+
+	// Advertised datanode address: hostname + configured gRPC port.
+	dnAddr := fmt.Sprintf("%s:%d", hostname(), cfg.Network.DatanodePort)
 
 	// Background heartbeat loop
 	ctx, cancel := shutdownCtx(grpcSrv)
 	defer cancel()
-	go datanodeHeartbeatLoop(ctx, cfg.Node.ID, dnDir, nnAddr)
+	go datanodeHeartbeatLoop(ctx, cfg.Node.ID, dnAddr, nnAddrs, dnLogger)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", cfg.Network.DatanodePort)
 	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", addr, err)
 	}
-	log.Printf("[datanode] %s listening on %s (namenode=%s, dir=%s)",
-		cfg.Node.ID, addr, nnAddr, dnDir)
+	log.Printf("[datanode] %s listening on %s (namenodes=%v, dir=%s)",
+		cfg.Node.ID, addr, nnAddrs, dnDir)
 
 	return grpcSrv.Serve(lis)
 }
 
 // serveGatewayCmd defined in gateway.go
-
 
 // --- helpers ---
 
@@ -239,23 +303,105 @@ func shutdownCtxWithRaft(srv *grpc.Server, r *raft.Raft) (context.Context, conte
 	return ctx, cancel
 }
 
-func datanodeHeartbeatLoop(ctx context.Context, nodeID, dnAddr, nnAddr string) {
-	// Register with Namenode
-	register := func() {
-		conn, err := grpc.NewClient(nnAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
+// raftHealthRegistry routes health-monitor mutations through the Raft log so
+// unavailability is decided and replicated cluster-wide (leader only).
+type raftHealthRegistry struct {
+	reg *domain.InMemoryDataNodeRegistry
+	srv *nn.NameNodeServer
+}
+
+func (r *raftHealthRegistry) GetAllAvailable() []*domain.DataNodeStatus {
+	return r.reg.GetAllAvailable()
+}
+
+func (r *raftHealthRegistry) MarkUnavailable(id string) error {
+	return r.srv.ReplicateUnavailable(id)
+}
+
+// runLeaderHealthMonitor starts the health monitor only while this node is
+// the Raft leader. Followers must not sweep: their local decisions would
+// diverge from the replicated registry.
+func runLeaderHealthMonitor(ctx context.Context, r *raft.Raft, hm *domain.HealthMonitor) {
+	for {
+		if r.State() == raft.Leader {
+			hm.Start(ctx)
+		} else {
+			hm.Stop()
+		}
+		select {
+		case <-ctx.Done():
 			return
+		case <-r.LeaderCh():
+		}
+	}
+}
+
+// datanodeHeartbeatLoop registers the datanode with the Raft leader and then
+// sends heartbeats. It rotates over the configured namenode addresses on any
+// failure (connection error, Unavailable from a follower, or
+// RequireReregistration), so registrations always converge on the leader and
+// survive leader changes.
+func datanodeHeartbeatLoop(ctx context.Context, nodeID, dnAddr string, nnAddrs []string, l *observability.Logger) {
+	if len(nnAddrs) == 0 {
+		return
+	}
+	idx := 0
+
+	registerAt := func(addr string) error {
+		conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			return err
 		}
 		defer conn.Close()
 		client := pb.NewNameNodeServiceClient(conn)
 		rctx, rcancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer rcancel()
-		client.RegisterDataNode(rctx, &pb.RegisterDataNodeRequest{
+		_, err = client.RegisterDataNode(rctx, &pb.RegisterDataNodeRequest{
 			DatanodeId:        nodeID,
 			Address:           dnAddr,
 			TotalStorageBytes: 1 << 30,
 			FreeStorageBytes:  1 << 30,
 		})
+		return err
+	}
+
+	register := func() bool {
+		start := time.Now()
+		for i := 0; i < len(nnAddrs); i++ {
+			addr := nnAddrs[(idx+i)%len(nnAddrs)]
+			err := registerAt(addr)
+			l.OpEnd(start, "datanode_register", addr, err, 0)
+			if err == nil {
+				idx = (idx + i) % len(nnAddrs)
+				l.Info("datanode_registered_with", "id", nodeID, "namenode", addr)
+				return true
+			}
+		}
+		l.Warn("datanode_register_failed_all", "id", nodeID, "namenodes", nnAddrs)
+		return false
+	}
+
+	heartbeat := func() bool {
+		start := time.Now()
+		conn, err := grpc.NewClient(nnAddrs[idx], grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			l.OpEnd(start, "datanode_heartbeat", nnAddrs[idx], err, 0)
+			idx = (idx + 1) % len(nnAddrs)
+			return false
+		}
+		client := pb.NewNameNodeServiceClient(conn)
+		rctx, rcancel := context.WithTimeout(context.Background(), 3*time.Second)
+		resp, err := client.Heartbeat(rctx, &pb.HeartbeatRequest{
+			DatanodeId: nodeID,
+		})
+		rcancel()
+		conn.Close()
+		l.OpEnd(start, "datanode_heartbeat", nnAddrs[idx], err, 0)
+		if err != nil || (resp != nil && resp.RequireReregistration) {
+			idx = (idx + 1) % len(nnAddrs)
+			return false
+		}
+		return true
 	}
 
 	register()
@@ -268,18 +414,7 @@ func datanodeHeartbeatLoop(ctx context.Context, nodeID, dnAddr, nnAddr string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			conn, err := grpc.NewClient(nnAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
-			if err != nil {
-				continue
-			}
-			client := pb.NewNameNodeServiceClient(conn)
-			rctx, rcancel := context.WithTimeout(context.Background(), 3*time.Second)
-			resp, err := client.Heartbeat(rctx, &pb.HeartbeatRequest{
-				DatanodeId: nodeID,
-			})
-			rcancel()
-			conn.Close()
-			if err != nil || (resp != nil && resp.RequireReregistration) {
+			if !heartbeat() {
 				register()
 			}
 		}
