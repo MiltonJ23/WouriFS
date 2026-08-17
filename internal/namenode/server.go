@@ -3,6 +3,7 @@ package namenode
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"time"
 
 	pb "github.com/MiltonJ23/WouriFS/api/gen/v1/namenode"
@@ -48,8 +49,9 @@ func (s *NameNodeServer) IsLeader() bool {
 	return s.raftNode.State() == raft.Leader
 }
 
-// raftSubmit serializes a WAL entry, applies it through the Raft log, and
-// waits for commitment. If this node is not the leader, the call is redirected.
+// raftSubmit serializes a WAL entry and applies it through the Raft log,
+// waiting for commitment (and local FSM apply). Only the leader can submit;
+// on a follower, raft.Apply returns raft.ErrNotLeader.
 func (s *NameNodeServer) raftSubmit(e WALEntry) error {
 	if s.raftNode == nil {
 		return nil // standalone mode: WAL-only, no consensus needed
@@ -64,6 +66,10 @@ func (s *NameNodeServer) raftSubmit(e WALEntry) error {
 
 // --- DataNode lifecycle ---
 
+// RegisterDataNode records a datanode in the cluster-wide registry. In Raft
+// mode the registration is submitted to the Raft log (leader only) so every
+// namenode converges on the same registry; followers answer Unavailable so
+// clients retry against the leader.
 func (s *NameNodeServer) RegisterDataNode(ctx context.Context, req *pb.RegisterDataNodeRequest) (*pb.RegisterDataNodeResponse, error) {
 	start, _ := s.log.OpStart("RegisterDataNode", req.DatanodeId)
 	defer func() { s.log.OpEnd(start, "RegisterDataNode", req.DatanodeId, nil, 0) }()
@@ -76,20 +82,79 @@ func (s *NameNodeServer) RegisterDataNode(ctx context.Context, req *pb.RegisterD
 		LastHeartbeat:     time.Now(),
 		IsAvailable:       true,
 	}
-	if err := s.registry.Register(node); err != nil {
+	if err := s.ReplicateRegister(node); err != nil {
+		if isNotLeaderErr(err) {
+			return nil, status.Error(codes.Unavailable, "not raft leader")
+		}
 		return nil, status.Errorf(codes.Internal, "register: %v", err)
 	}
 	s.log.Info("datanode_registered", "id", req.DatanodeId, "addr", req.Address)
 	return &pb.RegisterDataNodeResponse{}, nil
 }
 
+// Heartbeat refreshes a datanode's liveness. In Raft mode it is replicated
+// through the log so all namenodes keep the same heartbeat state; followers
+// answer Unavailable so clients switch to the leader.
 func (s *NameNodeServer) Heartbeat(ctx context.Context, req *pb.HeartbeatRequest) (*pb.HeartbeatResponse, error) {
-	err := s.registry.UpdateHeartbeat(req.DatanodeId, req.FreeStorageBytes, req.ActiveConnections)
+	err := s.ReplicateHeartbeat(req.DatanodeId, req.FreeStorageBytes, req.ActiveConnections)
 	if err != nil {
-		s.log.Debug("heartbeat_unknown_node", "id", req.DatanodeId)
-		return &pb.HeartbeatResponse{Acknowledged: false, RequireReregistration: true}, nil
+		if isNotLeaderErr(err) {
+			return nil, status.Error(codes.Unavailable, "not raft leader")
+		}
+		if err == domainnn.ErrNodeNotFound {
+			s.log.Debug("heartbeat_unknown_node", "id", req.DatanodeId)
+			return &pb.HeartbeatResponse{Acknowledged: false, RequireReregistration: true}, nil
+		}
+		return nil, status.Errorf(codes.Internal, "heartbeat: %v", err)
 	}
 	return &pb.HeartbeatResponse{Acknowledged: true}, nil
+}
+
+// ReplicateRegister applies a datanode registration locally (standalone) or
+// through the Raft log (consensus mode, leader only).
+func (s *NameNodeServer) ReplicateRegister(node *domainnn.DataNodeStatus) error {
+	if s.raftNode == nil {
+		return s.registry.Register(node)
+	}
+	return s.raftSubmit(WALEntry{
+		Op:           "register_datanode",
+		DatanodeID:   node.ID,
+		DatanodeAddr: node.Address,
+		TotalBytes:   node.TotalStorageBytes,
+		FreeBytes:    node.FreeStorageBytes,
+	})
+}
+
+// ReplicateHeartbeat applies a datanode heartbeat locally (standalone) or
+// through the Raft log (consensus mode, leader only).
+func (s *NameNodeServer) ReplicateHeartbeat(id string, freeStorage int64, activeConnections int32) error {
+	if s.raftNode == nil {
+		return s.registry.UpdateHeartbeat(id, freeStorage, activeConnections)
+	}
+	return s.raftSubmit(WALEntry{
+		Op:         "datanode_heartbeat",
+		DatanodeID: id,
+		FreeBytes:  freeStorage,
+	})
+}
+
+// ReplicateUnavailable marks a datanode unavailable locally (standalone) or
+// through the Raft log (consensus mode, leader only). Used by the health
+// monitor so unavailability is a cluster-wide decision.
+func (s *NameNodeServer) ReplicateUnavailable(id string) error {
+	if s.raftNode == nil {
+		return s.registry.MarkUnavailable(id)
+	}
+	return s.raftSubmit(WALEntry{
+		Op:         "datanode_unavailable",
+		DatanodeID: id,
+	})
+}
+
+// isNotLeaderErr reports whether a raft apply failed because this node is
+// not the cluster leader.
+func isNotLeaderErr(err error) bool {
+	return err != nil && errors.Is(err, raft.ErrNotLeader)
 }
 
 // --- File operations ---
@@ -206,11 +271,11 @@ func (s *NameNodeServer) ListDirectory(ctx context.Context, req *pb.ListDirector
 	pbEntries := make([]*pb.DirEntry, len(entries))
 	for i, e := range entries {
 		pbEntries[i] = &pb.DirEntry{
-			Name:       e.Name,
-			IsDir:      e.IsDir,
-			SizeBytes:  e.Size,
-			Mode:       e.Mode,
-			MtimeUnix:  e.Mtime.Unix(),
+			Name:      e.Name,
+			IsDir:     e.IsDir,
+			SizeBytes: e.Size,
+			Mode:      e.Mode,
+			MtimeUnix: e.Mtime.Unix(),
 		}
 	}
 	s.log.OpEnd(start, "ListDirectory", req.Path, nil, int64(len(pbEntries)))
@@ -323,13 +388,13 @@ func (s *NameNodeServer) StatFile(ctx context.Context, req *pb.StatFileRequest) 
 		mode = 0644
 	}
 	return &pb.StatFileResponse{
-		FileId:     fm.FileID,
-		Name:       fm.Path,
-		SizeBytes:  fm.Size,
-		Mode:       mode,
-		IsDir:      fm.IsDir,
-		MtimeUnix:  fm.Mtime.Unix(),
-		CtimeUnix:  fm.Ctime.Unix(),
+		FileId:    fm.FileID,
+		Name:      fm.Path,
+		SizeBytes: fm.Size,
+		Mode:      mode,
+		IsDir:     fm.IsDir,
+		MtimeUnix: fm.Mtime.Unix(),
+		CtimeUnix: fm.Ctime.Unix(),
 	}, nil
 }
 
@@ -431,8 +496,20 @@ func (s *NameNodeServer) ListNodes(ctx context.Context) *pb.ListNodesResponse {
 	}
 	return &pb.ListNodesResponse{
 		Nodes:        pbNodes,
-		RaftLeaderId: "", // set when Raft HA is wired
+		RaftLeaderId: s.raftLeaderID(),
 	}
+}
+
+// raftLeaderID returns the current Raft leader ID, or "" in standalone mode.
+func (s *NameNodeServer) raftLeaderID() string {
+	if s.raftNode == nil {
+		return ""
+	}
+	addr, id := s.raftNode.LeaderWithID()
+	if addr == "" {
+		return ""
+	}
+	return string(id)
 }
 
 func (s *NameNodeServer) walAppend(e WALEntry) {

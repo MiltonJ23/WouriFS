@@ -7,16 +7,23 @@ import (
 )
 
 // WALEntry represents one logged metadata mutation (FR-N-002).
+// Datanode-related ops (register_datanode, datanode_heartbeat,
+// datanode_unavailable) replicate the cluster-wide datanode registry so every
+// namenode holds the same view.
 type WALEntry struct {
-	Op       string   `json:"op"`
-	Path     string   `json:"path"`
-	OldPath  string   `json:"old_path,omitempty"`
-	NewPath  string   `json:"new_path,omitempty"`
-	FileID   string   `json:"file_id,omitempty"`
-	ChunkID  string   `json:"chunk_id,omitempty"`
-	Replicas []string `json:"replicas,omitempty"`
-	Size     int64    `json:"size,omitempty"`
-	Mode     uint32   `json:"mode,omitempty"`
+	Op           string   `json:"op"`
+	Path         string   `json:"path"`
+	OldPath      string   `json:"old_path,omitempty"`
+	NewPath      string   `json:"new_path,omitempty"`
+	FileID       string   `json:"file_id,omitempty"`
+	ChunkID      string   `json:"chunk_id,omitempty"`
+	Replicas     []string `json:"replicas,omitempty"`
+	Size         int64    `json:"size,omitempty"`
+	Mode         uint32   `json:"mode,omitempty"`
+	DatanodeID   string   `json:"datanode_id,omitempty"`
+	DatanodeAddr string   `json:"datanode_addr,omitempty"`
+	TotalBytes   int64    `json:"total_bytes,omitempty"`
+	FreeBytes    int64    `json:"free_bytes,omitempty"`
 }
 
 // WAL is a simple append-only JSON-lines Write-Ahead Log (FR-N-002, FR-N-003).

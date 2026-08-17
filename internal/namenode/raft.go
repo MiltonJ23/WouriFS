@@ -9,32 +9,37 @@ import (
 	"sync"
 	"time"
 
+	domainnn "github.com/MiltonJ23/WouriFS/internal/domain/namenode"
 	"github.com/hashicorp/raft"
 	raftbolt "github.com/hashicorp/raft-boltdb/v2"
 )
 
 // RaftConfig holds all parameters needed to bootstrap a Raft cluster node.
 type RaftConfig struct {
-	NodeID      string        // unique raft.ServerID
-	BindAddr    string        // raft transport bind address
-	DataDir     string        // bolt store + stable store directory
-	Bootstrap   bool          // true for first node (cluster bootstrap)
-	Peers       []string      // []raft.ServerAddress of peers for joining
+	NodeID       string        // unique raft.ServerID
+	BindAddr     string        // raft transport bind address
+	DataDir      string        // bolt store + stable store directory
+	Bootstrap    bool          // true for first node (cluster bootstrap)
+	Peers        []string      // []raft.ServerAddress of peers for joining
 	ApplyTimeout time.Duration // timeout for applying log entries
 }
 
-// RaftFSM implements raft.FSM — the replicated state machine for metadata.
+// RaftFSM implements raft.FSM — the replicated state machine for metadata
+// AND the cluster-wide datanode registry. The registry is nil in tests that
+// only exercise metadata ops.
 type RaftFSM struct {
-	mu    sync.RWMutex
-	store *MetadataStore
+	mu       sync.RWMutex
+	store    *MetadataStore
+	registry *domainnn.InMemoryDataNodeRegistry
 }
 
-// NewRaftFSM creates a FSM wrapping the existing MetadataStore.
-func NewRaftFSM(store *MetadataStore) *RaftFSM {
-	return &RaftFSM{store: store}
+// NewRaftFSM creates a FSM wrapping the existing MetadataStore and (when
+// non-nil) the datanode registry replicated to every cluster member.
+func NewRaftFSM(store *MetadataStore, registry *domainnn.InMemoryDataNodeRegistry) *RaftFSM {
+	return &RaftFSM{store: store, registry: registry}
 }
 
-// Apply replicates a Raft log entry into the metadata store.
+// Apply replicates a Raft log entry into the metadata store and registry.
 func (f *RaftFSM) Apply(logEntry *raft.Log) interface{} {
 	var e WALEntry
 	if err := json.Unmarshal(logEntry.Data, &e); err != nil {
@@ -76,8 +81,51 @@ func (f *RaftFSM) Apply(logEntry *raft.Log) interface{} {
 		if err := f.store.TruncateFile(e.Path, e.Size); err != nil {
 			log.Printf("raft fsm: truncate %s: %v", e.Path, err)
 		}
+	case "register_datanode":
+		if err := f.applyRegisterDataNode(e); err != nil {
+			log.Printf("raft fsm: register datanode %s: %v", e.DatanodeID, err)
+			return err
+		}
+	case "datanode_heartbeat":
+		if err := f.applyHeartbeat(e); err != nil {
+			log.Printf("raft fsm: heartbeat datanode %s: %v", e.DatanodeID, err)
+			return err
+		}
+	case "datanode_unavailable":
+		if err := f.applyUnavailable(e); err != nil {
+			log.Printf("raft fsm: mark unavailable %s: %v", e.DatanodeID, err)
+			return err
+		}
 	}
 	return nil
+}
+
+func (f *RaftFSM) applyRegisterDataNode(e WALEntry) error {
+	if f.registry == nil {
+		return nil
+	}
+	return f.registry.Register(&domainnn.DataNodeStatus{
+		ID:                e.DatanodeID,
+		Address:           e.DatanodeAddr,
+		TotalStorageBytes: e.TotalBytes,
+		FreeStorageBytes:  e.FreeBytes,
+		LastHeartbeat:     time.Now(),
+		IsAvailable:       true,
+	})
+}
+
+func (f *RaftFSM) applyHeartbeat(e WALEntry) error {
+	if f.registry == nil {
+		return nil
+	}
+	return f.registry.UpdateHeartbeat(e.DatanodeID, e.FreeBytes, 0)
+}
+
+func (f *RaftFSM) applyUnavailable(e WALEntry) error {
+	if f.registry == nil {
+		return nil
+	}
+	return f.registry.MarkUnavailable(e.DatanodeID)
 }
 
 // Snapshot serializes the entire metadata store for log compaction.
@@ -133,8 +181,10 @@ func (s *raftSnapshot) Persist(sink raft.SnapshotSink) error {
 func (s *raftSnapshot) Release() {}
 
 // BootstrapRaft creates a fully initialized Raft node for the Namenode.
-// Replaces the single-node WAL approach from Sprint 1.
-func BootstrapRaft(cfg RaftConfig, store *MetadataStore) (*raft.Raft, *RaftFSM, error) {
+// Replaces the single-node WAL approach from Sprint 1. The registry is
+// replicated to every member through the FSM so all namenodes share the
+// same datanode view.
+func BootstrapRaft(cfg RaftConfig, store *MetadataStore, registry *domainnn.InMemoryDataNodeRegistry) (*raft.Raft, *RaftFSM, error) {
 	rc := raft.DefaultConfig()
 	rc.LocalID = raft.ServerID(cfg.NodeID)
 
@@ -169,7 +219,7 @@ func BootstrapRaft(cfg RaftConfig, store *MetadataStore) (*raft.Raft, *RaftFSM, 
 		return nil, nil, err
 	}
 
-	fsm := NewRaftFSM(store)
+	fsm := NewRaftFSM(store, registry)
 
 	r, err := raft.NewRaft(rc, fsm, logStore, stableStore, snapStore, transport)
 	if err != nil {

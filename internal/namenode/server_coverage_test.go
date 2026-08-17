@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	pb "github.com/MiltonJ23/WouriFS/api/gen/v1/namenode"
-	domainnn "github.com/MiltonJ23/WouriFS/internal/domain/namenode"
 	"github.com/MiltonJ23/WouriFS/internal/domain"
+	domainnn "github.com/MiltonJ23/WouriFS/internal/domain/namenode"
 	interceptor "github.com/MiltonJ23/WouriFS/internal/transport/grpc/interceptor"
 	"github.com/hashicorp/raft"
 	"google.golang.org/grpc/codes"
@@ -151,7 +151,8 @@ func TestNameNodeServer_CoverageGaps(t *testing.T) {
 // RaftFSM unit tests — Apply, Snapshot, Restore.
 func TestRaftFSM_ApplySnapshotRestore(t *testing.T) {
 	store := NewMetadataStore(3)
-	fsm := NewRaftFSM(store)
+	reg := domainnn.NewInMemoryDataNodeRegistry()
+	fsm := NewRaftFSM(store, reg)
 
 	t.Run("Apply create_file", func(t *testing.T) {
 		entry := WALEntry{Op: "create_file", Path: "/raft/a.txt", FileID: "f-raft-1"}
@@ -198,6 +199,39 @@ func TestRaftFSM_ApplySnapshotRestore(t *testing.T) {
 		b, _ := json.Marshal(WALEntry{Op: "bogus_op", Path: "/ghost"})
 		log := &raft.Log{Data: b, Index: 1, Term: 1, Type: raft.LogCommand}
 		fsm.Apply(log) // must not panic
+	})
+
+	t.Run("Apply register_datanode replicates into registry", func(t *testing.T) {
+		applyEntry := func(e WALEntry) interface{} {
+			b, _ := json.Marshal(e)
+			return fsm.Apply(&raft.Log{Data: b, Index: 1, Term: 1, Type: raft.LogCommand})
+		}
+
+		applyEntry(WALEntry{
+			Op: "register_datanode", DatanodeID: "dn-r1",
+			DatanodeAddr: "100.64.0.9:9100", TotalBytes: 1 << 30, FreeBytes: 1 << 30,
+		})
+		nodes := reg.GetAllAvailable()
+		if len(nodes) != 1 || nodes[0].ID != "dn-r1" {
+			t.Fatalf("registry should contain dn-r1 after Apply, got %+v", nodes)
+		}
+		if nodes[0].Address != "100.64.0.9:9100" {
+			t.Errorf("wrong address after Apply: %s", nodes[0].Address)
+		}
+
+		applyEntry(WALEntry{Op: "datanode_heartbeat", DatanodeID: "dn-r1", FreeBytes: 512})
+		if got := reg.GetAll()[0].FreeStorageBytes; got != 512 {
+			t.Errorf("heartbeat Apply should update free storage, got %d", got)
+		}
+
+		applyEntry(WALEntry{Op: "datanode_unavailable", DatanodeID: "dn-r1"})
+		if n := len(reg.GetAllAvailable()); n != 0 {
+			t.Errorf("datanode should be unavailable after Apply, %d available", n)
+		}
+
+		if err, ok := applyEntry(WALEntry{Op: "datanode_heartbeat", DatanodeID: "ghost"}).(error); !ok || err == nil {
+			t.Error("expected ErrNodeNotFound for unknown datanode heartbeat")
+		}
 	})
 
 	t.Run("Apply corrupt data does not crash", func(t *testing.T) {
@@ -277,8 +311,8 @@ type testSink struct {
 	cancelled bool
 }
 
-func (s *testSink) ID() string                    { return "test-sink" }
-func (s *testSink) Cancel() error                  { s.cancelled = true; return nil }
+func (s *testSink) ID() string    { return "test-sink" }
+func (s *testSink) Cancel() error { s.cancelled = true; return nil }
 func (s *testSink) Write(b []byte) (int, error) {
 	if s.failWrite {
 		return 0, io.ErrShortWrite
