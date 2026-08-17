@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,6 +17,20 @@ import (
 )
 
 var raftTestMu sync.Mutex
+
+// raftTestPortAllocator hands out disjoint base ports to multi-node raft
+// tests so they never collide (nano-based ranges overlapped and TIME_WAIT
+// sockets made reruns flaky).
+var raftTestPortAllocator = func() *atomic.Int64 {
+	v := &atomic.Int64{}
+	v.Store(35000)
+	return v
+}()
+
+// nextRaftBasePort reserves a block of 100 ports for one test.
+func nextRaftBasePort() int {
+	return int(raftTestPortAllocator.Add(100))
+}
 
 func TestRaftCluster_LeaderElection(t *testing.T) {
 	raftTestMu.Lock()
@@ -184,7 +199,7 @@ func TestRaftCluster_RegistryReplication(t *testing.T) {
 	raftTestMu.Lock()
 	defer raftTestMu.Unlock()
 
-	basePort := 35000 + int(time.Now().UnixNano()%10000)
+	basePort := nextRaftBasePort()
 	const n = 3
 
 	stores := make([]*MetadataStore, n)
@@ -275,7 +290,7 @@ func TestRaftCluster_FollowerRejectsRegistration(t *testing.T) {
 	raftTestMu.Lock()
 	defer raftTestMu.Unlock()
 
-	basePort := 36000 + int(time.Now().UnixNano()%10000)
+	basePort := nextRaftBasePort()
 	const n = 3
 
 	stores := make([]*MetadataStore, n)
