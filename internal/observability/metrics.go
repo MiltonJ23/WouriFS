@@ -1,11 +1,15 @@
 package observability
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 )
 
 // Metrics holds Prometheus-compatible counters and histograms.
@@ -17,6 +21,20 @@ type Metrics struct {
 	opBytes     map[string]int64
 	opOK        map[string]int64
 	opErrors    map[string]int64
+	mirror      *otelMirror // nil = OTLP export disabled
+}
+
+// otelMirror forwards the same measurements to the OTel SDK so the OTLP
+// collector receives them. Instruments are created once per metric name.
+type otelMirror struct {
+	opTotal metric.Int64Counter
+	opDur   metric.Float64Histogram
+	opBytes metric.Int64Counter
+
+	mu        sync.Mutex
+	gaugeVals map[string]int64
+	gaugeSeen map[string]bool
+	meter     metric.Meter
 }
 
 // NewMetrics initialises empty metric storage.
@@ -29,6 +47,29 @@ func NewMetrics() *Metrics {
 		opOK:        make(map[string]int64),
 		opErrors:    make(map[string]int64),
 	}
+}
+
+// AttachOtel mirrors every Record/SetGauge into the given OTel meter, which
+// is exported to the OTLP collector. Passing a nil meter disables the mirror.
+func (m *Metrics) AttachOtel(meter metric.Meter) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if meter == nil {
+		m.mirror = nil
+		return
+	}
+	mirror := &otelMirror{
+		gaugeVals: make(map[string]int64),
+		gaugeSeen: make(map[string]bool),
+		meter:     meter,
+	}
+	mirror.opTotal, _ = meter.Int64Counter("wourifs_op_total",
+		metric.WithDescription("WouriFS operations by status"))
+	mirror.opDur, _ = meter.Float64Histogram("wourifs_op_duration_seconds",
+		metric.WithDescription("WouriFS operation latency"))
+	mirror.opBytes, _ = meter.Int64Counter("wourifs_op_bytes_total",
+		metric.WithDescription("WouriFS bytes transferred"))
+	m.mirror = mirror
 }
 
 // Record captures one operation for latency and throughput metrics.
@@ -44,6 +85,18 @@ func (m *Metrics) Record(op, status string, dur time.Duration, bytes int64) {
 	}
 	m.opLatencies[op] = append(m.opLatencies[op], dur.Seconds())
 	m.opBytes[op] += bytes
+
+	if m.mirror != nil {
+		ctx := context.Background()
+		m.mirror.opTotal.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("op", op), attribute.String("status", status)))
+		m.mirror.opDur.Record(ctx, dur.Seconds(), metric.WithAttributes(
+			attribute.String("op", op)))
+		if bytes > 0 {
+			m.mirror.opBytes.Add(ctx, bytes, metric.WithAttributes(
+				attribute.String("op", op)))
+		}
+	}
 }
 
 // SetGauge sets a named gauge to a value.
@@ -51,6 +104,34 @@ func (m *Metrics) SetGauge(name string, val int64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.gauges[name] = val
+
+	if m.mirror == nil {
+		return
+	}
+	m.mirror.mu.Lock()
+	defer m.mirror.mu.Unlock()
+	m.mirror.gaugeVals[name] = val
+	if m.mirror.gaugeSeen[name] {
+		return
+	}
+	m.mirror.gaugeSeen[name] = true
+
+	g, err := m.mirror.meter.Int64ObservableGauge(name,
+		metric.WithDescription("WouriFS gauge "+name))
+	if err != nil {
+		return
+	}
+	_, err = m.mirror.meter.RegisterCallback(func(ctx context.Context, o metric.Observer) error {
+		m.mirror.mu.Lock()
+		v := m.mirror.gaugeVals[name]
+		m.mirror.mu.Unlock()
+		o.ObserveInt64(g, v)
+		return nil
+	}, g)
+	if err != nil {
+		// Instrument already registered or provider error: value stays local.
+		return
+	}
 }
 
 // ServeHTTP exposes metrics in Prometheus exposition format.

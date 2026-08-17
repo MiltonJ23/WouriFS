@@ -2,12 +2,16 @@
  * Distributed tracing for WouriFS gRPC calls.
  *
  * Follows the W3C Trace Context standard (traceparent header) and OpenTelemetry
- * semantic conventions without importing the OTEL SDK. Trace context is
- * propagated through gRPC metadata across the Gateway → Namenode → Datanode
- * chain. Each component creates spans with RPC attributes.
+ * semantic conventions. Trace context is propagated through gRPC metadata
+ * across the Gateway → Namenode → Datanode chain. Each component creates spans
+ * with RPC attributes.
  *
- * In production, the OTEL SDK collector (OTLP, port 4317) ingests these traces.
- * In development, the no-op tracer drops spans.
+ * Two modes:
+ *   - Local only (NewTracer): spans are kept in memory for tests/metrics.
+ *   - OTLP export (NewTracerWithOtel): every span is additionally exported to
+ *     the configured OTLP/gRPC collector (default localhost:4317) through the
+ *     OpenTelemetry SDK. The W3C IDs used locally are the ones the SDK exports,
+ *     so local bookkeeping and the collector always agree.
  *
  * Architecture:
  *   - A root span is created by the Gateway for each incoming HTTP request.
@@ -26,6 +30,8 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
@@ -35,22 +41,24 @@ const traceparentVersion = "00"
 
 // Span represents a single operation within a trace.
 type Span struct {
-	TraceID    string    // 32 hex chars
-	SpanID     string    // 16 hex chars
-	ParentID   string    // empty for root spans
+	TraceID    string // 32 hex chars
+	SpanID     string // 16 hex chars
+	ParentID   string // empty for root spans
 	Name       string
 	StartTime  time.Time
 	Attributes map[string]string
 	ended      bool
 	endTime    time.Time
+	otelSpan   trace.Span // mirror span in the OTel SDK (nil when OTLP is off)
 }
 
 // Tracer creates new spans and manages trace context propagation.
 type Tracer struct {
 	mu     sync.Mutex
 	spans  []Span
-	rate   float64 // 0.0 to 1.0, fraction of traces to sample
-	active int64   // number of in-flight spans
+	rate   float64      // 0.0 to 1.0, fraction of traces to sample
+	active int64        // number of in-flight spans
+	otel   trace.Tracer // optional OTel tracer; nil = local bookkeeping only
 }
 
 // NewTracer creates a tracer. sampleRate of 1.0 samples every trace;
@@ -66,6 +74,17 @@ func NewTracer(sampleRate float64) *Tracer {
 		spans: make([]Span, 0, 1024),
 		rate:  sampleRate,
 	}
+}
+
+// NewTracerWithOtel creates a tracer that additionally exports every span
+// through the given OTel TracerProvider (OTLP/gRPC). A nil provider behaves
+// like NewTracer.
+func NewTracerWithOtel(sampleRate float64, provider trace.TracerProvider) *Tracer {
+	t := NewTracer(sampleRate)
+	if provider != nil {
+		t.otel = provider.Tracer("wourifs", trace.WithInstrumentationVersion("1.0.0"))
+	}
+	return t
 }
 
 // shouldSample returns true if the trace should be captured.
@@ -89,13 +108,24 @@ func (t *Tracer) StartSpan(ctx context.Context, name string) (context.Context, *
 		return ctx, nil
 	}
 
-	traceID, spanID := newIDs()
-
-	// Extract parent from incoming gRPC metadata if present
-	parentID := ""
+	// Extract parent from incoming gRPC metadata if present (W3C traceparent).
+	traceID, spanID, parentID := "", "", ""
+	var parentSC trace.SpanContext
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		if tp := md.Get("traceparent"); len(tp) > 0 {
-			traceID, parentID, _ = parseTraceParent(tp[0])
+			if tid, pid, okp := parseTraceParent(tp[0]); okp {
+				traceID = tid
+				parentID = pid
+				parentSC = remoteSpanContext(tid, pid)
+			}
+		}
+	}
+	// Fall back to a local parent span context carried in ctx.
+	if !parentSC.IsValid() {
+		if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+			parentSC = sc
+			parentID = sc.SpanID().String()
+			traceID = sc.TraceID().String()
 		}
 	}
 
@@ -108,13 +138,36 @@ func (t *Tracer) StartSpan(ctx context.Context, name string) (context.Context, *
 		Attributes: make(map[string]string),
 	}
 
+	if t.otel != nil {
+		spanCtx := ctx
+		if parentSC.IsValid() {
+			if parentSC.IsRemote() {
+				spanCtx = trace.ContextWithRemoteSpanContext(ctx, parentSC)
+			} else {
+				spanCtx = trace.ContextWithSpanContext(ctx, parentSC)
+			}
+		}
+		spanCtx, span.otelSpan = t.otel.Start(spanCtx, name, trace.WithSpanKind(trace.SpanKindServer))
+		sc := span.otelSpan.SpanContext()
+		span.TraceID = sc.TraceID().String()
+		span.SpanID = sc.SpanID().String()
+		if span.ParentID == "" && parentSC.IsValid() {
+			span.ParentID = parentSC.SpanID().String()
+		}
+		ctx = spanCtx
+	} else {
+		if span.TraceID == "" {
+			span.TraceID, span.SpanID = newIDs()
+		}
+	}
+
 	t.mu.Lock()
 	t.active++
 	t.mu.Unlock()
 
 	// Inject trace context into outgoing metadata
 	ctx = metadata.AppendToOutgoingContext(ctx,
-		"traceparent", buildTraceParent(traceID, spanID),
+		"traceparent", buildTraceParent(span.TraceID, span.SpanID),
 	)
 
 	return ctx, span
@@ -128,6 +181,10 @@ func (t *Tracer) EndSpan(span *Span) {
 	span.ended = true
 	span.endTime = time.Now()
 
+	if span.otelSpan != nil {
+		span.otelSpan.End()
+	}
+
 	t.mu.Lock()
 	t.spans = append(t.spans, *span)
 	t.active--
@@ -140,6 +197,9 @@ func (s *Span) SetAttribute(key, value string) {
 		return
 	}
 	s.Attributes[key] = value
+	if s.otelSpan != nil {
+		s.otelSpan.SetAttributes(attribute.String(key, value))
+	}
 }
 
 // Duration returns the elapsed time of the span.
@@ -174,8 +234,8 @@ func (t *Tracer) Metrics() map[string]int64 {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return map[string]int64{
-		"wourifs_traces_total":      int64(len(t.spans)),
-		"wourifs_traces_active":     t.active,
+		"wourifs_traces_total":  int64(len(t.spans)),
+		"wourifs_traces_active": t.active,
 	}
 }
 
@@ -245,4 +305,20 @@ func parseTraceParent(tp string) (traceID, parentID string, ok bool) {
 		return "", "", false
 	}
 	return traceID, parentID, true
+}
+
+// remoteSpanContext builds an OTel remote SpanContext from a W3C traceparent
+// (version 00, sampled flag set).
+func remoteSpanContext(traceIDHex, spanIDHex string) trace.SpanContext {
+	tid, err1 := trace.TraceIDFromHex(traceIDHex)
+	sid, err2 := trace.SpanIDFromHex(spanIDHex)
+	if err1 != nil || err2 != nil {
+		return trace.SpanContext{}
+	}
+	return trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID:    tid,
+		SpanID:     sid,
+		TraceFlags: trace.FlagsSampled,
+		Remote:     true,
+	})
 }

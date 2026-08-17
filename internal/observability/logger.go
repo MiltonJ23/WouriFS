@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"go.opentelemetry.io/contrib/bridges/otelslog"
+	otelLog "go.opentelemetry.io/otel/sdk/log"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -14,9 +16,9 @@ import (
 // Logger wraps slog with WouriFS-specific structured logging conventions.
 // All gRPC handlers log through this; metrics are emitted alongside logs.
 type Logger struct {
-	slog       *slog.Logger
-	metrics    *Metrics
-	level      slog.Level
+	slog    *slog.Logger
+	metrics *Metrics
+	level   slog.Level
 }
 
 // NewLogger creates a production logger writing JSON to stdout.
@@ -27,6 +29,67 @@ func NewLogger(level slog.Level) *Logger {
 		metrics: NewMetrics(),
 		level:   level,
 	}
+}
+
+// NewLoggerWithOtel creates a production logger that writes JSON to stdout
+// AND exports every record through the OTel LoggerProvider (OTLP/gRPC).
+// A nil provider falls back to NewLogger.
+func NewLoggerWithOtel(level slog.Level, provider *otelLog.LoggerProvider) *Logger {
+	if provider == nil {
+		return NewLogger(level)
+	}
+	jsonHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})
+	otelHandler := otelslog.NewHandler("wourifs",
+		otelslog.WithLoggerProvider(provider),
+		otelslog.WithSource(true),
+	)
+	return &Logger{
+		slog:    slog.New(multiHandler{handlers: []slog.Handler{jsonHandler, otelHandler}}),
+		metrics: NewMetrics(),
+		level:   level,
+	}
+}
+
+// multiHandler fans out slog records to several handlers (stdout + OTLP).
+type multiHandler struct {
+	handlers []slog.Handler
+}
+
+func (m multiHandler) Enabled(ctx context.Context, l slog.Level) bool {
+	for _, h := range m.handlers {
+		if h.Enabled(ctx, l) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m multiHandler) Handle(ctx context.Context, r slog.Record) error {
+	var firstErr error
+	for _, h := range m.handlers {
+		if h.Enabled(ctx, r.Level) {
+			if err := h.Handle(ctx, r.Clone()); err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+	}
+	return firstErr
+}
+
+func (m multiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	cloned := make([]slog.Handler, len(m.handlers))
+	for i, h := range m.handlers {
+		cloned[i] = h.WithAttrs(attrs)
+	}
+	return multiHandler{handlers: cloned}
+}
+
+func (m multiHandler) WithGroup(name string) slog.Handler {
+	cloned := make([]slog.Handler, len(m.handlers))
+	for i, h := range m.handlers {
+		cloned[i] = h.WithGroup(name)
+	}
+	return multiHandler{handlers: cloned}
 }
 
 // NewTestLogger returns a no-op logger for tests.

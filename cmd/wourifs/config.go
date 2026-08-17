@@ -23,13 +23,14 @@ import (
 
 // Config is the root of the WouriFS deployment descriptor.
 type Config struct {
-	Cluster ClusterConfig `yaml:"cluster"`
-	Node    NodeConfig    `yaml:"node"`
-	Network NetworkConfig `yaml:"network"`
-	Store   StoreConfig   `yaml:"store"`
-	Auth    AuthConfig    `yaml:"auth"`
-	Metrics MetricsConfig `yaml:"metrics"`
-	Tracing TracingConfig `yaml:"tracing"`
+	Cluster       ClusterConfig       `yaml:"cluster"`
+	Node          NodeConfig          `yaml:"node"`
+	Network       NetworkConfig       `yaml:"network"`
+	Store         StoreConfig         `yaml:"store"`
+	Auth          AuthConfig          `yaml:"auth"`
+	Metrics       MetricsConfig       `yaml:"metrics"`
+	Tracing       TracingConfig       `yaml:"tracing"`
+	Observability ObservabilityConfig `yaml:"observability"`
 }
 
 // ClusterConfig holds cluster-wide parameters.
@@ -48,18 +49,19 @@ type NodeConfig struct {
 
 // NetworkConfig defines how nodes discover each other.
 type NetworkConfig struct {
-	Mode            string   `yaml:"mode"`              // "tailscale" or "lan"
-	NamenodePeers   []string `yaml:"namenode_peers"`    // raft peer addresses (host:port)
-	DatanodePort    int      `yaml:"datanode_port"`     // default 9100
-	NamenodePort    int      `yaml:"namenode_port"`     // default 9000
-	GatewayPort     int      `yaml:"gateway_port"`      // default 8443
-	MetricsPort     int      `yaml:"metrics_port"`      // default 9102
-	HeadscaleServer string   `yaml:"headscale_server"`  // only when mode=tailscale
+	Mode            string   `yaml:"mode"`             // "tailscale" or "lan"
+	NamenodePeers   []string `yaml:"namenode_peers"`   // raft peer addresses (host:port)
+	NamenodeAddrs   []string `yaml:"namenode_addrs"`   // gRPC addresses of ALL namenodes (host:port) for leader discovery
+	DatanodePort    int      `yaml:"datanode_port"`    // default 9100
+	NamenodePort    int      `yaml:"namenode_port"`    // default 9000
+	GatewayPort     int      `yaml:"gateway_port"`     // default 8443
+	MetricsPort     int      `yaml:"metrics_port"`     // default 9102
+	HeadscaleServer string   `yaml:"headscale_server"` // only when mode=tailscale
 }
 
 // StoreConfig controls local chunk storage and data directory layout.
 type StoreConfig struct {
-	DataDir   string `yaml:"data_dir"`   // /var/lib/wourifs or user-chosen
+	DataDir   string `yaml:"data_dir"`    // /var/lib/wourifs or user-chosen
 	MaxSizeGB int    `yaml:"max_size_gb"` // disk quota for this node (0 = unlimited)
 }
 
@@ -80,9 +82,16 @@ type MetricsConfig struct {
 
 // TracingConfig controls OpenTelemetry export.
 type TracingConfig struct {
-	Enabled    bool    `yaml:"enabled"`     // default true
-	OTLPEndpoint string `yaml:"otlp_endpoint"` // collector address
-	SampleRate float64 `yaml:"sample_rate"`    // 0.0 - 1.0
+	Enabled      bool    `yaml:"enabled"`       // default true
+	OTLPEndpoint string  `yaml:"otlp_endpoint"` // collector address
+	SampleRate   float64 `yaml:"sample_rate"`   // 0.0 - 1.0
+}
+
+// ObservabilityConfig controls OTLP export of logs, metrics and traces.
+type ObservabilityConfig struct {
+	Enabled      bool   `yaml:"enabled"`       // default true
+	OTLPEndpoint string `yaml:"otlp_endpoint"` // OTLP gRPC collector, default localhost:4317
+	ServiceName  string `yaml:"service_name"`  // default wourifs
 }
 
 // Validate checks configuration invariants and returns the first error found.
@@ -136,7 +145,33 @@ func DefaultConfig() Config {
 			Enabled:    true,
 			SampleRate: 1.0,
 		},
+		Observability: ObservabilityConfig{
+			Enabled:      true,
+			OTLPEndpoint: "localhost:4317", // OTLP/gRPC standard port
+			ServiceName:  "wourifs",
+		},
 	}
+}
+
+// ResolveOTLPEndpoint returns the OTLP/gRPC collector endpoint: the
+// observability section wins, then the legacy tracing section, then the
+// default (localhost:4317).
+func (c Config) ResolveOTLPEndpoint() string {
+	if c.Observability.OTLPEndpoint != "" {
+		return c.Observability.OTLPEndpoint
+	}
+	if c.Tracing.OTLPEndpoint != "" {
+		return c.Tracing.OTLPEndpoint
+	}
+	return "localhost:4317"
+}
+
+// ResolveServiceName returns the OTel service name for this node.
+func (c Config) ResolveServiceName() string {
+	if c.Observability.ServiceName != "" {
+		return c.Observability.ServiceName
+	}
+	return "wourifs"
 }
 
 // LoadConfig reads a YAML file, overlaying values onto defaults.

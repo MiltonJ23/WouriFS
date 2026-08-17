@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	pb "github.com/MiltonJ23/WouriFS/api/gen/v1/namenode"
+	"github.com/MiltonJ23/WouriFS/internal/observability"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -37,6 +39,13 @@ func serveGatewayCmd() *cobra.Command {
 			}
 			if !cfg.HasRole("gateway") {
 				return fmt.Errorf("node %q missing role 'gateway'", cfg.Node.ID)
+			}
+
+			pipeline, obsShutdown := setupObservability(cfg, "gateway")
+			defer obsShutdown()
+			gwLogger := observability.NewLogger(slog.LevelInfo)
+			if pipeline != nil {
+				gwLogger = observability.NewLoggerWithOtel(slog.LevelInfo, pipeline.LoggerProvider)
 			}
 
 			addr := fmt.Sprintf("127.0.0.1:%d", cfg.Network.NamenodePort)
@@ -102,6 +111,7 @@ func serveGatewayCmd() *cobra.Command {
 			}()
 
 			log.Printf("[gateway] %s listening on :%d (namenode=%s)", cfg.Node.ID, cfg.Network.GatewayPort, addr)
+			gwLogger.Info("gateway_started", "node", cfg.Node.ID, "port", cfg.Network.GatewayPort, "namenode", addr)
 			if err := httpSrv.ListenAndServe(); err != http.ErrServerClosed {
 				return err
 			}
