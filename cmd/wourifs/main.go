@@ -14,6 +14,8 @@
  *   wourifs provision combine     # reconstruct master secret
  *   wourifs status                # cluster health overview
  *   wourifs audit log             # query the append-only audit chain
+ *   wourifs share                 # Shamir share gRPC service (was share-service)
+ *   wourifs bench                 # chunk I/O latency/throughput benchmark
  *
  * Deployment model (small EMF / no server room):
  *   Each office workstation runs 'wourifs serve datanode'. At the head
@@ -52,6 +54,8 @@ contributes storage. Operations are accessible through a single binary.`,
 	root.AddCommand(mountCmd())
 	root.AddCommand(statusCmd())
 	root.AddCommand(auditCmd())
+	root.AddCommand(shareCmd())
+	root.AddCommand(benchCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "wourifs: %v\n", err)
