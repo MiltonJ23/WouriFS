@@ -29,28 +29,62 @@ WouriFS operates at the filesystem layer. Every branch workstation mounts a shar
 
 ## Architecture
 
+Vue processus : chaque composant est un processus `wourifs`, connecté par gRPC, Raft et OTLP.
+
 ```mermaid
-graph TB
-    subgraph Branch["Branch Agencies"]
-        A["PC Agence A<br/>datanode<br/>quota 80 GB"]
-        B["PC Agence B<br/>datanode<br/>quota 50 GB"]
+flowchart TB
+    subgraph users["Utilisateurs"]
+        EMP["Employé (agence)<br/>wourifs mount — FUSE"]
+        ADM["Admin (siège)<br/>navigateur → :8443"]
+        OFF["Deux officiers de l'institution<br/>admin IT + directeur (double contrôle)"]
     end
 
-    subgraph HQ["Head Office"]
-        C["PC Siège 1<br/>namenode + datanode<br/>quota 100 GB"]
-        D["PC Siège 2<br/>datanode + gateway<br/>quota 80 GB"]
+    subgraph mesh["Mesh privé — Tailscale / WireGuard"]
+        subgraph nns["Namenodes — quorum Raft 3 nœuds<br/>gRPC :9000 · raft :9001 · metrics :9102"]
+            NN1["namenode-1"]
+            NN2["namenode-2"]
+            NN3["namenode-3"]
+        end
+        subgraph dns["Datanodes — gRPC :9100<br/>(toutes les machines contribuent du stockage)"]
+            DN1["datanode-A"]
+            DN2["datanode-B"]
+            DN3["datanode-C"]
+        end
+        GW["Gateway<br/>dashboard HTTPS :8443"]
+        SHARE["wourifs share<br/>gRPC :443 — mTLS + JWT<br/>(service de provisionnement)"]
+        WATCH["wouri-watchd :9105<br/>(détection d'anomalies — wiring en cours)"]
     end
 
-    A ---|WireGuard mesh| C
-    B ---|WireGuard mesh| C
-    D ---|WireGuard mesh| C
+    subgraph obs["Observabilité (poste admin)"]
+        COLL["OpenTelemetry Collector<br/>OTLP/gRPC :4317"]
+        PROM["Prometheus<br/>scrape :9102"]
+        JAEGER["Jaeger UI :16686"]
+    end
 
-    E["Branch Employee<br/>Excel / accounting software<br/>Opens Z:\\clients\\"]
-    F["Head Office Admin<br/>Browser → dashboard :8443"]
+    EMP -->|"gRPC :9000<br/>métadonnées : create, lookup, stat, mkdir…"| nns
+    EMP -->|"gRPC :9100<br/>ReadChunk / WriteChunk<br/>(blocs de 1 Mo)"| dns
+    ADM -->|"HTTPS :8443 — dashboard"| GW
+    GW -->|"gRPC :9000 — ListDirectory / topologie"| nns
+    OFF -->|"gRPC :443 — reconstruction Shamir (k=2, n=2)<br/>share 1 : admin IT · share 2 : directeur"| SHARE
 
-    A ---|FUSE mount| E
-    D ---|HTTPS :8443| F
+    dns -->|"RegisterDataNode + Heartbeat (5 s)<br/>rotations vers le leader"| nns
+    NN1 <-->|"raft :9001 — réplication du log + élections"| NN2
+    NN2 <-->|"raft :9001"| NN3
+    NN1 <-->|"raft :9001"| NN3
+    NN1 -.->|"flux d'audit (gRPC)"| WATCH
+
+    nns -->|"OTLP/gRPC :4317 — traces, métriques, logs"| COLL
+    dns -->|"OTLP/gRPC :4317"| COLL
+    GW -->|"OTLP/gRPC :4317"| COLL
+    SHARE -->|"OTLP/gRPC :4317"| COLL
+    PROM -->|"scrape Prometheus text"| nns
+    COLL -->|"traces"| JAEGER
+    COLL -->|"métriques"| PROM
 ```
+
+**Connecteurs** : gRPC `:9000` (métadonnées), gRPC `:9100` (chunks), Raft `:9001` (consensus), OTLP/gRPC `:4317` (télémétrie), HTTP `:8443` (dashboard), HTTP `:9102` (Prometheus). Le FUSE lit la topologie des chunks auprès du namenode puis stream les blocs directement depuis les datanodes (rf=3, quorum d'écriture W≥2).
+
+> À savoir : le **join Raft multi-nœud** (`AddVoter`) n'est pas encore exposé par la CLI — le déploiement réel actuel démarre avec 1 namenode ; le diagramme montre la cible à 3 nœuds.
 
 ### Key Components
 
